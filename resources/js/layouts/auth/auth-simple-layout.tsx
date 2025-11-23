@@ -1,10 +1,9 @@
-import AppLogoIcon from '@/components/app-logo-icon';
-import { Link, usePage } from '@inertiajs/react';
-import { useEffect } from 'react';
+import AppLogoIcon from "@/components/app-logo-icon";
+import { Link, usePage } from "@inertiajs/react";
+import { useEffect } from "react";
 
 interface AuthLayoutProps {
     children: React.ReactNode;
-    name?: string;
     title?: string;
     description?: string;
 }
@@ -16,64 +15,66 @@ export default function AuthSimpleLayout({ children, title, description }: AuthL
         nama_app: string;
         logo?: string;
         warna?: string;
-        seo?: {
-            title?: string;
-            description?: string;
-            keywords?: string;
-        };
     };
 
-    const primaryColor = setting?.warna || '#0ea5e9';
-    const primaryForeground = '#ffffff';
+    const primaryColor = setting?.warna || "#0ea5e9";
+    const primaryForeground = "#ffffff";
 
     useEffect(() => {
-        document.documentElement.style.setProperty('--primary', primaryColor);
-        document.documentElement.style.setProperty('--color-primary', primaryColor);
-        document.documentElement.style.setProperty('--primary-foreground', primaryForeground);
-        document.documentElement.style.setProperty('--color-primary-foreground', primaryForeground);
-    }, [primaryColor, primaryForeground]);
+        document.documentElement.style.setProperty("--primary", primaryColor);
+        document.documentElement.style.setProperty("--primary-foreground", primaryForeground);
+    }, [primaryColor]);
 
     return (
-        <div className="bg-background flex min-h-svh flex-col items-center justify-center p-6 md:p-10">
-            <div className="w-full max-w-md rounded-xl bg-white shadow-sm dark:bg-gray-800/50 dark:shadow-none">
-                <div className="p-8 sm:p-10">
-                    <div className="flex flex-col gap-8">
-                        {/* Logo and Header Section */}
-                        <div className="flex flex-col items-center gap-6">
-                            <Link 
-                                href={route('home')} 
-                                className="flex flex-col items-center gap-3 font-medium transition-opacity hover:opacity-90"
-                            >
-                                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--primary)] p-2 shadow-sm">
-                                    <AppLogoIcon className="size-8 fill-current text-[var(--primary-foreground)]" />
-                                </div>
-                                <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                                    {setting?.nama_app}
-                                </span>
-                            </Link>
+        <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-gray-100">
 
-                            <div className="space-y-1.5 text-center">
-                                <h1 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
-                                    {title}
-                                </h1>
-                                {description && (
-                                    <p className="text-muted-foreground text-center text-sm leading-5">
-                                        {description}
-                                    </p>
-                                )}
-                            </div>
-                        </div>
+            {/* LEFT: IMAGE / HERO */}
+            <div
+                className="hidden lg:flex items-center justify-center bg-cover bg-center relative"
+                style={{
+                    backgroundImage: "url('/storage/img/IMG_0724.JPG')"
+                }}
+            >
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"></div>
 
-                        {/* Form Content */}
-                        <div className="space-y-6">
-                            {children}
-                        </div>
-                    </div>
+                <div className="relative z-10 text-white text-center px-10 max-w-xl">
+                    <h1 className="text-4xl font-bold drop-shadow-lg">
+                        Selamat Datang di {setting?.nama_app}
+                    </h1>
                 </div>
+            </div>
 
-                {/* Optional Footer */}
-                <div className="border-t border-gray-100 px-8 py-6 text-center dark:border-gray-700/50">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+            {/* RIGHT: FORM LOGIN */}
+            <div className="flex items-center justify-center p-6 lg:p-10 bg-white">
+                <div className="w-full max-w-md space-y-6">
+
+                    {/* Logo */}
+                    <div className="flex flex-col items-center gap-3">
+                        <img
+                            src={`/storage/${setting.logo}`}
+                            alt="Logo"
+                            className="h-35 w-35 object-contain rounded-xl p-2"
+                        />
+
+
+                        <span className="text-xl font-semibold text-gray-900">
+                            {setting?.nama_app}
+                        </span>
+                    </div>
+
+                    {/* Title & Description */}
+                    <div className="text-center space-y-1">
+                        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+                        {description && (
+                            <p className="text-gray-600 text-sm">{description}</p>
+                        )}
+                    </div>
+
+                    {/* FORM */}
+                    <div className="mt-4">{children}</div>
+
+                    {/* FOOTER */}
+                    <p className="text-xs text-center text-gray-500 mt-6">
                         © {new Date().getFullYear()} {setting?.nama_app}. All rights reserved.
                     </p>
                 </div>

@@ -7,6 +7,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
+use Spatie\Permission\Models\Role;
 
 class ShareMenus
 {
@@ -17,34 +18,58 @@ class ShareMenus
         Inertia::share('menus', function () use ($user) {
             if (!$user) return [];
 
-            // Ambil semua menu secara flat
-            $allMenus = Menu::orderBy('order')->get();
+            // 1. AMBIL ROLE AKTIF DARI SESSION
+            // Jika tidak ada di session, ambil role pertama user
+            $activeRoleName = session('active_role', $user->roles->first()?->name);
 
-            // Index berdasarkan ID
+            // 2. AMBIL SEMUA PERMISSION MILIK ROLE TERSEBUT
+            // Kita butuh daftar permission name dari role yang sedang aktif
+            $activeRolePermissions = [];
+            if ($activeRoleName) {
+                $role = Role::findByName($activeRoleName); // Pastikan use Spatie\Permission\Models\Role;
+                if ($role) {
+                    $activeRolePermissions = $role->permissions->pluck('name')->toArray();
+                }
+            }
+
+            // 3. AMBIL SEMUA MENU (Diurutkan)
+            $allMenus = Menu::orderBy('order')->get();
             $indexed = $allMenus->keyBy('id');
 
-            // Recursive builder (filtered by permission)
-            $buildTree = function ($parentId = null) use (&$buildTree, $indexed, $user) {
+            // 4. FILTER MENU BERDASARKAN PERMISSION ROLE AKTIF
+            $buildTree = function ($parentId = null) use (&$buildTree, $indexed, $activeRolePermissions, $activeRoleName) {
                 return $indexed
-                    ->filter(
-                        fn($menu) =>
-                        $menu->parent_id === $parentId &&
-                            (!$menu->permission_name || $user->can($menu->permission_name))
-                    )
+                    ->filter(function ($menu) use ($parentId, $activeRolePermissions, $activeRoleName) {
+                        // Cek Parent ID
+                        if ($menu->parent_id !== $parentId) {
+                            return false;
+                        }
+
+                        // Superadmin (opsional): selalu bisa lihat semua menu
+                        if ($activeRoleName === 'superadmin') {
+                            return true;
+                        }
+
+                        // Jika menu tidak butuh permission -> TAMPILKAN
+                        if (!$menu->permission_name) {
+                            return true;
+                        }
+
+                        // Jika menu butuh permission -> CEK APAKAH ROLE AKTIF PUNYA PERMISSION ITU
+                        return in_array($menu->permission_name, $activeRolePermissions);
+                    })
                     ->map(function ($menu) use (&$buildTree) {
                         $menu->children = $buildTree($menu->id)->values();
                         return $menu;
                     })
-                    ->filter(
-                        fn($menu) =>
-                        $menu->route || $menu->children->isNotEmpty()
-                    )
+                    // Hapus menu parent yang tidak punya anak & tidak punya route (kosong)
+                    ->filter(function ($menu) {
+                        return $menu->route || $menu->children->isNotEmpty();
+                    })
                     ->values();
             };
 
-            $menus = $buildTree();
-
-            return $menus;
+            return $buildTree();
         });
 
         return $next($request);

@@ -4,14 +4,17 @@ import { Head } from "@inertiajs/react";
 import AppLayout from "@/layouts/app-layout";
 import { type BreadcrumbItem } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PageProps } from "@inertiajs/core"; // pastikan sesuai versi
+import { PageProps } from "@inertiajs/core";
+import { Shield } from "lucide-react"; // Pastikan import icon Shield
 
-// Extend PageProps untuk menambahkan auth
+// 1. UPDATE INTERFACE
+// Menyesuaikan dengan data yang dikirim dari HandleInertiaRequests
 interface DashboardPageProps extends PageProps {
   auth: {
     user: {
       name: string;
     };
+    active_role?: string; // Data role dari middleware
   };
 }
 
@@ -22,16 +25,18 @@ const breadcrumbs: BreadcrumbItem[] = [
 export default function Dashboard() {
   const { auth } = usePage<DashboardPageProps>().props;
 
+  // 2. DEFINISI ROLE
+  // Fallback ke 'guest' jika undefined agar tidak error saat .toUpperCase()
+  const currentRole = auth.active_role || "guest";
+
+  // Helper Boolean
+  const isSuperAdmin = currentRole === 'superadmin';
+  const isAdmin = currentRole === 'admin';
+
   const prodiList = [
-    "S2 Manajemen",
-    "S1 Manajemen",
-    "S1 Akuntansi",
-    "S1 Sistem Informasi",
-    "S1 Teknologi Informasi",
-    "S1 Teknologi Pangan",
-    "D3 Perhotelan",
-    "D3 Usaha Perjalanan Wisata",
-    "D1 Perhotelan",
+    "S2 Manajemen", "S1 Manajemen", "S1 Akuntansi", "S1 Sistem Informasi",
+    "S1 Teknologi Informasi", "S1 Teknologi Pangan", "D3 Perhotelan",
+    "D3 Usaha Perjalanan Wisata", "D1 Perhotelan",
   ];
 
   return (
@@ -39,12 +44,20 @@ export default function Dashboard() {
       <Head title="Dashboard" />
 
       <div className="p-8 bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 min-h-screen transition-colors duration-300">
-        {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
-                Welcome <span className="text-indigo-600">{auth.user.name}</span>
-            </h1>
+
+        {/* Header Welcome */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
+            <div>
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
+                    Welcome <span className="text-indigo-600">{auth.user.name}</span>
+                </h1>
+                <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs px-2 py-1 rounded-full flex items-center gap-1 bg-gray-100 text-gray-700 border border-gray-200">
+                        <Shield size={12}/> {currentRole.toUpperCase()}
+                    </span>
+                </div>
             </div>
+        </div>
 
         {/* Siklus PPEPP */}
         <Card className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md shadow-lg rounded-xl border border-gray-200 dark:border-gray-700">
