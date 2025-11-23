@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-
+use Illuminate\Support\Facades\Auth;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 class UserFileController extends Controller
 {
     public function index(Request $request)
@@ -50,28 +51,54 @@ class UserFileController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+public function store(Request $request)
     {
         $request->validate([
-            'files' => 'required|array',
-            'files.*' => 'file|max:10240',
+            'files.*' => 'required|file|max:10240', // Max 10MB per file
+            'folder_id' => 'nullable|exists:media_folders,id',
         ]);
 
-        foreach ($request->file('files') as $file) {
-            $request->user()
-                ->addMedia($file)
-                ->withCustomProperties([
-                    'folder_id' => $request->input('folder_id'),
-                ])
-                ->toMediaCollection('files');
+        $user = $request->user();
+        $folderId = $request->input('folder_id');
+
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $media = $user->addMedia($file)
+                    ->toMediaCollection('files');
+
+                // Simpan relasi folder di custom properties
+                if ($folderId) {
+                    $media->setCustomProperty('folder_id', $folderId);
+                    $media->save();
+                }
+            }
         }
 
-        return back()->with('success', 'Files uploaded successfully');
+        return back()->with('success', 'File berhasil diupload.');
     }
 
-    public function destroy(Request $request, $id)
+    /**
+     * Hapus file.
+     * (Method inilah yang hilang sebelumnya)
+     */
+    public function destroy($id)
     {
-        $media = $request->user()->media()->where('id', $id)->firstOrFail();
+        // Cari media berdasarkan ID
+        $media = Media::findOrFail($id);
+
+        // 🛡️ SECURITY CHECK
+        // Hanya izinkan hapus jika:
+        // 1. User adalah Superadmin (berdasarkan session active_role atau role asli)
+        // 2. ATAU User adalah pemilik file (model_id == user_id)
+
+        $user = Auth::user();
+        $isActiveSuperAdmin = session('active_role') === 'superadmin'; // Atau logic role Anda
+        $isOwner = $media->model_id === $user->id && $media->model_type === get_class($user);
+
+        if (!$isActiveSuperAdmin && !$isOwner) {
+            abort(403, 'Anda tidak berhak menghapus file ini.');
+        }
+
         $media->delete();
 
         return back()->with('success', 'File berhasil dihapus.');

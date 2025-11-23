@@ -45,7 +45,8 @@ class MediaFolderPolicy
      */
     public function delete(User $user, MediaFolder $folder): bool
     {
-        return $user->id === $folder->user_id;
+        // Ganti 'superadmin' sesuai nama role Anda
+        return $user->hasRole('superadmin') || $user->id === $folder->user_id;
     }
 
 
