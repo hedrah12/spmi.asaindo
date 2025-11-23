@@ -106,6 +106,6 @@ class MediaFolderController extends Controller
         // 🗑️ Hapus folder utama
         $folder->delete();
 
-        return redirect('/files')->with('success', 'Folder berhasil dihapus.');
+        return back()->with('success', 'Folder berhasil dihapus.');
     }
 }
