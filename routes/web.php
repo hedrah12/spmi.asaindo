@@ -11,13 +11,18 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\DspmiController;
 use App\Http\Controllers\BackupController;
 use App\Http\Controllers\SppeppController;
+use App\Http\Controllers\StandarController;
 use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\KriteriaController;
 use App\Http\Controllers\UserFileController;
+use App\Http\Controllers\IndikatorController;
 use App\Http\Controllers\KkriteriaController;
+use App\Http\Controllers\DepartemenController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\SettingAppController;
 use App\Http\Controllers\MediaFolderController;
 use App\Http\Controllers\ButirKriteriaController;
+use App\Http\Controllers\LingkupController;
 
 Route::get('/', function () {
     return Inertia::render('welcome');
@@ -72,6 +77,11 @@ Route::middleware(['auth', 'menu.permission'])->group(function () {
     Route::get('/dspmi', [DspmiController::class, 'index'])->name('dspmi.index');
     Route::get('/sppepp', [SppeppController::class, 'index'])->name('sppepp.index');
     Route::get('/kkriteria', [KkriteriaController::class, 'index'])->name('kkriteria.index');
+    Route::resource('indikator', IndikatorController::class);
+    Route::resource('lingkup', LingkupController::class);
+    Route::resource('departemen', DepartemenController::class);
+    Route::resource('standar', StandarController::class);
+    Route::resource('/kriteria', KriteriaController::class);
 });
 
 require __DIR__ . '/settings.php';
