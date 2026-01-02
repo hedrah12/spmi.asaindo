@@ -93,6 +93,10 @@ export default function PtkIndex({ auth, data, meta }: Props) {
         return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
     };
 
+    const breadcrumbs = [
+        { title: "Dashboard", href: "/dashboard" },
+        { title: "Permohonan Tindak Koreksi", href: "/ptk" },
+    ];
     // --- COMPONENT: SWITCHERS (Style Match Index.tsx) ---
     const YearSwitcher = () => (
         <div className="relative group">
@@ -230,7 +234,7 @@ export default function PtkIndex({ auth, data, meta }: Props) {
     };
 
     return (
-        <AppLayout>
+        <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Tindakan Koreksi (PTK)" />
 
             <div className="p-4 md:p-8 space-y-8 bg-gray-50 min-h-screen dark:bg-gradient-to-r dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
@@ -239,23 +243,39 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                     <div className="space-y-1">
                         {/* Mengubah Gradient menjadi Indigo/Violet sesuai style PAMI/Index.tsx */}
                         <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-purple-600 dark:from-indigo-400 dark:to-purple-400 flex items-center gap-2">
-                            <FileText className="text-indigo-600 dark:text-indigo-400 w-8 h-8" /> Tindakan Koreksi (PTK)
+                            Tindakan Koreksi
                         </h1>
                         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                             <LayoutDashboard size={16} />
-                            <span>Akses: <span className="uppercase font-bold text-indigo-600 dark:text-indigo-400">{meta.role}</span></span>
+                            <span>Panel Akses:</span>
+                            <Badge variant={meta.role === 'auditor' ? 'default' : (meta.role === 'auditee' ? 'secondary' : 'destructive')} className="uppercase">
+                                {meta.role}
+                            </Badge>
                         </div>
                     </div>
 
                     <Card className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-indigo-100 dark:border-indigo-900/30 shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tahun</span>
+                        <div className="space-y-1">
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider block">Tahun Audit</span>
                             <YearSwitcher />
                         </div>
-                        <div className="hidden sm:block w-px h-8 bg-gray-200 dark:bg-gray-700"></div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Departemen</span>
-                            <DeptSwitcher />
+                        <div className="hidden sm:block w-px h-10 bg-gray-200 dark:bg-gray-700"></div>
+                        <div className="space-y-1 min-w-[150px]">
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Departemen Target</span>
+                            <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                                <DeptSwitcher />
+                            </div>
+                        </div>
+                        <div className="hidden sm:block w-px h-10 bg-gray-200 dark:bg-gray-700"></div>
+                        <div className="space-y-1">
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Status Jadwal</span>
+                            <div className="flex items-center gap-2 text-xs">
+                                {meta.has_schedule ? (
+                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 px-2 py-0.5"><CheckCircle2 size={12} className="fill-green-500 text-white" /> Aktif</Badge>
+                                ) : (
+                                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 gap-1 px-2 py-0.5"><AlertCircle size={12} className="fill-red-500 text-white" /> N/A</Badge>
+                                )}
+                            </div>
                         </div>
                     </Card>
                 </div>
@@ -303,11 +323,11 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                                                             {iIdx === 0 && (
                                                                 <div className="mb-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded border border-indigo-100 dark:border-indigo-900/50">
                                                                     <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase block mb-1">Standar</span>
-                                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200">{standar.pernyataan_standar}</p>
+                                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 whitespace-pre-line">{standar.pernyataan_standar}</p>
                                                                 </div>
                                                             )}
                                                             <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Indikator</span>
-                                                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium">
+                                                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium whitespace-pre-line">
                                                                 {ind.pernyataan_indikator}
                                                             </p>
                                                         </td>
@@ -374,8 +394,8 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                                                                         <Button
                                                                             size="sm"
                                                                             className={`w-full text-xs gap-1 text-white shadow-sm ${['admin', 'superadmin', 'auditor'].includes(meta.role)
-                                                                                    ? "bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-                                                                                    : "bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                                                                                ? "bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                                                                                : "bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500"
                                                                                 }`}
                                                                             onClick={() => setSelectedIndikatorForModal(ind)}
                                                                         >

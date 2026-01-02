@@ -149,7 +149,7 @@ export default function PencatatanAmiIndex({ auth, data, meta }: Props) {
         }
         return (
             <div className="relative min-w-[200px]">
-                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-indigo-600 dark:text-indigo-400">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-indigo-600 dark:text-indigo-400">
                     <Building2 size={16} />
                 </div>
                 <select
@@ -176,22 +176,39 @@ export default function PencatatanAmiIndex({ auth, data, meta }: Props) {
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
                     <div className="space-y-1">
                         <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-purple-600 dark:from-indigo-400 dark:to-purple-400 flex items-center gap-2">
-                           <ListChecks className="text-indigo-600 dark:text-indigo-400 w-8 h-8" /> Pencatatan Hasil AMI
+                            Pencatatan Hasil AMI
                         </h1>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 pl-1">
-                            Monitor status kepatuhan standar dan tindak lanjut audit.
-                        </p>
+                        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                            <LayoutDashboard size={16} />
+                            <span>Panel Akses:</span>
+                            <Badge variant={meta.role === 'auditor' ? 'default' : (meta.role === 'auditee' ? 'secondary' : 'destructive')} className="uppercase">
+                                {meta.role}
+                            </Badge>
+                        </div>
                     </div>
 
                     <Card className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-indigo-100 dark:border-indigo-900/30 shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Tahun</span>
+                        <div className="space-y-1">
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider block">Tahun Audit</span>
                             <YearSwitcher />
                         </div>
-                        <div className="hidden sm:block w-px h-8 bg-gray-200 dark:bg-gray-700"></div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Departemen</span>
-                            <DeptSwitcher />
+                        <div className="hidden sm:block w-px h-10 bg-gray-200 dark:bg-gray-700"></div>
+                        <div className="space-y-1 min-w-[150px]">
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Departemen Target</span>
+                            <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                                <DeptSwitcher />
+                            </div>
+                        </div>
+                        <div className="hidden sm:block w-px h-10 bg-gray-200 dark:bg-gray-700"></div>
+                        <div className="space-y-1">
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Status Jadwal</span>
+                            <div className="flex items-center gap-2 text-xs">
+                                {meta.has_schedule ? (
+                                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 px-2 py-0.5"><CheckCircle2 size={12} className="fill-green-500 text-white" /> Aktif</Badge>
+                                ) : (
+                                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 gap-1 px-2 py-0.5"><AlertCircle size={12} className="fill-red-500 text-white" /> N/A</Badge>
+                                )}
+                            </div>
                         </div>
                     </Card>
                 </div>
@@ -265,7 +282,7 @@ export default function PencatatanAmiIndex({ auth, data, meta }: Props) {
                                                                     <Badge variant="outline" className="mb-1 text-[10px] text-indigo-600 border-indigo-200 dark:text-indigo-400 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20">
                                                                         Standar
                                                                     </Badge>
-                                                                    <p className="font-bold text-gray-800 dark:text-gray-200 leading-relaxed text-sm">
+                                                                    <p className="font-bold text-gray-800 dark:text-gray-200 leading-relaxed text-sm whitespace-pre-line">
                                                                         {standar.pernyataan_standar}
                                                                     </p>
                                                                 </div>
@@ -277,15 +294,17 @@ export default function PencatatanAmiIndex({ auth, data, meta }: Props) {
                                                             <div className="flex items-start gap-3">
                                                                 <div className="mt-1.5 min-w-[6px] min-h-[6px] rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-indigo-500 transition-colors"></div>
                                                                 <div className="space-y-2 w-full">
-                                                                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed font-medium">
+                                                                    <Badge variant="outline" className="mb-1 text-[10px] text-indigo-600 border-indigo-200 dark:text-indigo-400 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20">
+                                                                        Indikator
+                                                                    </Badge>
+                                                                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed font-medium whitespace-pre-line">
                                                                         {indikator.pernyataan_indikator}
                                                                     </p>
                                                                     {carStatus && (
-                                                                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide ${
-                                                                            carStatus === 'OPEN'
-                                                                                ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400'
-                                                                                : 'bg-green-50 border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
-                                                                        }`}>
+                                                                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wide ${carStatus === 'OPEN'
+                                                                            ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400'
+                                                                            : 'bg-green-50 border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
+                                                                            }`}>
                                                                             {carStatus === 'OPEN' ? <AlertTriangle size={10} /> : <CheckCircle size={10} />}
                                                                             CAR: {carStatus}
                                                                         </div>
@@ -349,8 +368,8 @@ export default function PencatatanAmiIndex({ auth, data, meta }: Props) {
                                 {/* Section 1: Indikator & Skor */}
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center">
-                                         <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pernyataan Indikator</h4>
-                                         <Badge className={`uppercase px-3 py-1 ${getScoreBadgeVariant(selectedIndikator.pami?.skor || '')}`}>
+                                        <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pernyataan Indikator</h4>
+                                        <Badge className={`uppercase px-3 py-1 ${getScoreBadgeVariant(selectedIndikator.pami?.skor || '')}`}>
                                             {selectedIndikator.pami?.skor || 'Belum Dinilai'}
                                         </Badge>
                                     </div>
@@ -426,7 +445,7 @@ export default function PencatatanAmiIndex({ auth, data, meta }: Props) {
                                 <Button
                                     variant="ghost"
                                     onClick={() => {
-                                         const url = route('pencatatan.print', {
+                                        const url = route('pencatatan.print', {
                                             id_indikator: selectedIndikator.id,
                                             jadwal_id: meta.jadwal_id
                                         });

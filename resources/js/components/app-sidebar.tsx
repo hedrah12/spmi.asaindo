@@ -80,22 +80,21 @@ function RenderMenu({ items, level = 0 }: { items: MenuItem[]; level?: number })
                                 <SidebarMenuButton
                                     onClick={() => toggleMenu(menu.id)}
                                     className={cn(
-                                        `group flex items-center justify-between rounded-md transition-colors ${indentClass}`,
+                                        `group flex items-center rounded-md transition-colors ${indentClass}`,
                                         activeClass,
                                         level === 0 ? 'py-3 px-4 my-1' : 'py-2 px-3'
                                     )}
                                 >
-                                    <div className="flex items-center">
-                                        <Icon className="size-4 mr-3 opacity-80 group-hover:opacity-100" />
-                                        <span>{menu.title}</span>
-                                    </div>
+                                    <Icon className="size-4 mr-3 opacity-80 group-hover:opacity-100" />
+                                    <span>{menu.title}</span>
                                     <ChevronDown
                                         className={cn(
-                                            'size-4 opacity-50 group-hover:opacity-70 transition-transform',
-                                            isOpen ? 'rotate-0' : '-rotate-90' // tertutup: kanan, terbuka: bawah
+                                            'ml-auto size-4 opacity-50 group-hover:opacity-70 transition-transform',
+                                            isOpen ? 'rotate-0' : '-rotate-90'
                                         )}
                                     />
                                 </SidebarMenuButton>
+
                                 {isOpen && (
                                     <SidebarMenu className="ml-2 border-l border-muted pl-2">
                                         <RenderMenu items={children} level={level + 1} />
@@ -114,9 +113,10 @@ function RenderMenu({ items, level = 0 }: { items: MenuItem[]; level?: number })
                                 <Link href={menu.route || '#'}>
                                     <Icon className="size-4 mr-3 opacity-80 group-hover:opacity-100" />
                                     <span>{menu.title}</span>
-                                    {level > 0 && (
-                                        <ChevronRight className="ml-auto size-4 opacity-0 group-hover:opacity-50" />
+                                    {children.length > 0 && (
+                                        <ChevronRight className="ml-auto w-4 h-4 opacity-0 group-hover:opacity-50 transition-opacity" />
                                     )}
+
                                 </Link>
                             </SidebarMenuButton>
                         )}
@@ -133,7 +133,11 @@ export function AppSidebar() {
         <Sidebar
             collapsible="icon"
             variant="inset"
-            className="border-r bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+            className="border-r bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60
+            dark:bg-gradient-to-r
+              bg-gray-100 dark:from-gray-900
+    dark:via-gray-950
+    dark:to-gray-900"
         >
             <SidebarHeader className="px-4 py-3 border-b">
                 <SidebarMenu>

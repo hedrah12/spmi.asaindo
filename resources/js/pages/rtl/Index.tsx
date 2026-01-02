@@ -70,7 +70,10 @@ export default function RtlIndex({ auth, data, meta }: Props) {
         if (!dateString) return "-";
         return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
     };
-
+    const breadcrumbs = [
+        { title: "Dashboard", href: "/dashboard" },
+        { title: "Rencana Tindak Koreksi", href: "/rtl" },
+    ];
     const DeptSwitcher = () => {
         if (!meta.my_departments || meta.my_departments.length <= 1) {
             return (
@@ -94,7 +97,7 @@ export default function RtlIndex({ auth, data, meta }: Props) {
     };
 
     return (
-        <AppLayout>
+        <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Rencana Tindak Lanjut (RTL)" />
 
             <div className="p-4 md:p-8 space-y-8 bg-gray-50 min-h-screen dark:bg-gradient-to-r dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
@@ -102,21 +105,23 @@ export default function RtlIndex({ auth, data, meta }: Props) {
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
                     <div className="space-y-1">
                         <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400 flex items-center gap-2">
-                            <ClipboardList className="text-indigo-600 dark:text-indigo-400 w-8 h-8" /> Rencana Tindak Lanjut (RTL)
+                            Rencana Tindak Lanjut
                         </h1>
                         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                             <LayoutDashboard size={16} />
-                            <span>Akses: <span className="uppercase font-bold">{meta.role}</span></span>
+                            <span>Panel Akses:</span>
+                            <Badge variant={meta.role === 'auditor' ? 'default' : (meta.role === 'auditee' ? 'secondary' : 'destructive')} className="uppercase">
+                                {meta.role}
+                            </Badge>
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-2xl">
-                            Daftar seluruh temuan audit (lintas tahun) yang <b>belum selesai (Open/Submitted)</b>. Data akan hilang dari sini setelah status berubah menjadi <b>Close</b>.
-                        </p>
                     </div>
 
-                    <Card className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-indigo-100 dark:border-gray-700 shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Departemen</span>
-                            <DeptSwitcher />
+                    <Card className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-indigo-100 dark:border-indigo-900/30 shadow-sm">
+                       <div className="space-y-1 min-w-[150px]">
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Departemen Target</span>
+                            <div className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                                <DeptSwitcher />
+                            </div>
                         </div>
                     </Card>
                 </div>
@@ -161,11 +166,11 @@ export default function RtlIndex({ auth, data, meta }: Props) {
                                                             {index === 0 && (
                                                                 <div className="mb-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded border border-indigo-100 dark:border-indigo-900/50">
                                                                     <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase block mb-1">Standar</span>
-                                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200">{standar.pernyataan_standar}</p>
+                                                                    <p className="text-xs font-bold text-gray-800 dark:text-gray-200 whitespace-pre-line">{standar.pernyataan_standar}</p>
                                                                 </div>
                                                             )}
                                                             <span className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Indikator</span>
-                                                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium">
+                                                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed font-medium whitespace-pre-line">
                                                                 {ind.pernyataan_indikator}
                                                             </p>
                                                         </td>
@@ -251,11 +256,10 @@ export default function RtlIndex({ auth, data, meta }: Props) {
                                                                 {ind.car && (
                                                                     <div className="w-full">
                                                                         <span className="text-[9px] text-gray-400 uppercase block mb-1">Status CAR</span>
-                                                                        <Badge variant="outline" className={`text-[10px] w-full justify-center uppercase tracking-wide py-1 ${
-                                                                            ind.car.status === 'Open' ? 'border-red-200 text-red-600 bg-red-50 dark:bg-red-900/20' :
+                                                                        <Badge variant="outline" className={`text-[10px] w-full justify-center uppercase tracking-wide py-1 ${ind.car.status === 'Open' ? 'border-red-200 text-red-600 bg-red-50 dark:bg-red-900/20' :
                                                                             ind.car.status === 'Submitted' ? 'border-blue-200 text-blue-600 bg-blue-50 dark:bg-blue-900/20' :
-                                                                            'border-green-200 text-green-600 bg-green-50 dark:bg-green-900/20'
-                                                                        }`}>
+                                                                                'border-green-200 text-green-600 bg-green-50 dark:bg-green-900/20'
+                                                                            }`}>
                                                                             {ind.car.status}
                                                                         </Badge>
                                                                     </div>
@@ -264,11 +268,10 @@ export default function RtlIndex({ auth, data, meta }: Props) {
                                                                 {ind.car && (
                                                                     <Button
                                                                         size="sm"
-                                                                        className={`w-full text-xs gap-1 shadow-sm mt-1 text-white ${
-                                                                            ['admin', 'superadmin', 'auditor'].includes(meta.role)
+                                                                        className={`w-full text-xs gap-1 shadow-sm mt-1 text-white ${['admin', 'superadmin', 'auditor'].includes(meta.role)
                                                                             ? "bg-indigo-600 hover:bg-indigo-700"
                                                                             : "bg-orange-600 hover:bg-orange-700"
-                                                                        }`}
+                                                                            }`}
                                                                         onClick={() => setSelectedIndikatorForModal(ind)}
                                                                     >
                                                                         {['admin', 'superadmin', 'auditor'].includes(meta.role) ? <CheckCircle2 size={12} /> : <FileText size={12} />}
