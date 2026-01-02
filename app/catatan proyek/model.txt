@@ -1,0 +1,667 @@
+C:\laragon\www\spmi.asaindo\app\Models\ButirKriteria.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ButirKriteria extends Model
+{
+    use HasFactory;
+
+    protected $table = 'butir_kriteria'; // nama tabel
+
+    protected $fillable = [
+        'element',
+        'indikator',
+        'prodi',
+        'lingkup',
+        'auditor',
+        'auditee',
+        'siklus',
+    ];
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\Departemen.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Departemen extends Model
+{
+    use HasFactory;
+
+    /**
+     * Nama tabel di database.
+     * Laravel sebenarnya otomatis mencari tabel 'departemens' (plural),
+     * tapi mendefinisikan ini secara eksplisit adalah praktik yang baik.
+     */
+    protected $table = 'departemens';
+
+    /**
+     * ⚠️ KONFIGURASI PENTING: PRIMARY KEY
+     * Secara default, Laravel menganggap Primary Key bernama 'id'.
+     * Karena tabel Anda menggunakan 'id_departemen', kita WAJIB mendefinisikannya di sini.
+     * Jika tidak, fungsi seperti find(), save(), atau delete() akan error.
+     */
+    protected $primaryKey = 'id_departemen';
+
+    /**
+     * Mass Assignment Protection.
+     * Daftar kolom yang diizinkan untuk diisi secara massal via method
+     * create() atau update(). Ini fitur keamanan agar user tidak bisa
+     * menyisipkan data ke kolom sensitif (misal: 'is_admin') secara paksa.
+     */
+    protected $fillable = [
+        'nama_departemen',
+        'user_id',
+    ];
+    protected $guarded = [];
+    /**
+     * Relasi ke Model User (Many-to-One / Belongs To).
+     * Artinya: Satu departemen "dimiliki" atau "dikepalai" oleh satu User.
+     * * Parameter ke-2 ('user_id') adalah nama Foreign Key di tabel departemens.
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\File.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
+
+class File extends Model
+{
+    /**
+     * Mass Assignment Protection.
+     * Kolom yang diizinkan untuk diisi secara massal (create/update).
+     */
+    protected $fillable = ['name', 'path', 'mime_type', 'size', 'folder_id'];
+
+    /**
+     * ✨ JSON APPENDS
+     * Menambahkan atribut virtual 'url' ke dalam output JSON model ini.
+     * Berguna agar saat data dikirim ke Frontend (React/Inertia),
+     * field 'url' sudah tersedia otomatis, meskipun tidak ada kolom 'url' di database.
+     */
+    protected $appends = ['url'];
+
+    /**
+     * 🔗 ACCESSOR: getUrlAttribute
+     * Logika untuk menghasilkan nilai atribut 'url' di atas.
+     * Mengubah path relatif (misal: 'uploads/file.jpg') menjadi URL lengkap
+     * (misal: 'http://localhost:8000/storage/uploads/file.jpg').
+     */
+    public function getUrlAttribute()
+    {
+        return Storage::url($this->path);
+    }
+
+    /**
+     * 🧹 MODEL BOOT / EVENT HOOK
+     * Method ini dijalankan otomatis saat model di-booting.
+     * Digunakan untuk mendaftarkan event listener Eloquent.
+     */
+    protected static function booted()
+    {
+        // Event 'deleting': Dijalankan SESAAT SEBELUM record database dihapus.
+        static::deleting(function ($file) {
+            // Cek apakah file fisik ada di storage disk 'public'
+            if ($file->path && Storage::disk('public')->exists($file->path)) {
+                // Hapus file fisik agar tidak menjadi sampah (orphan file) di server
+                Storage::disk('public')->delete($file->path);
+            }
+        });
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\Folder.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Folder extends Model
+{
+    /**
+     * Atribut yang bisa diisi massal.
+     * 'parent_id' digunakan untuk menampung ID folder induk (jika ada).
+     * Jika null, berarti ini adalah Root Folder.
+     */
+    protected $fillable = ['name', 'parent_id'];
+
+    /**
+     * Relasi One-to-Many ke model File.
+     * Satu folder bisa memiliki banyak file.
+     */
+    public function files() {
+        return $this->hasMany(File::class);
+    }
+
+    /**
+     * 🔄 RELASI SELF-JOIN (REKURSIF)
+     * Relasi ini menghubungkan model Folder ke dirinya sendiri.
+     * Digunakan untuk mengambil daftar "Sub-folder" (anak).
+     */
+    public function children() {
+        return $this->hasMany(Folder::class, 'parent_id');
+    }
+
+    /**
+     * 🛡️ MODEL BOOT / CASCADING DELETE
+     * Logika ini sangat penting untuk menjaga kebersihan data dan file fisik.
+     */
+    protected static function booted()
+    {
+        static::deleting(function ($folder) {
+
+            // 1. Hapus Semua File di Dalamnya
+            // ⚠️ PENTING: Kita menggunakan 'each->delete()' (looping model),
+            // BUKAN '$folder->files()->delete()' (query SQL raw).
+            //
+            // Alasannya: Agar event 'deleting' di Model 'File' (yang menghapus fisik file di storage)
+            // tetap terpanggil untuk setiap file. Jika pakai query raw, file fisik tidak akan terhapus.
+            $folder->files->each->delete();
+
+            // 2. Hapus Semua Sub-folder (Rekursif)
+            // Ini akan memicu event 'deleting' ini lagi pada setiap anak folder (Sub-folder).
+            // Jadi jika kita menghapus folder induk, semua anak, cucu, dan file di dalamnya
+            // akan ikut terhapus secara otomatis dan bersih.
+            $folder->children->each->delete();
+        });
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\Indikator.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Indikator extends Model
+{
+    use HasFactory;
+
+    /**
+     * Nama tabel di database.
+     * Didefinisikan secara eksplisit untuk menghindari kesalahan konvensi penamaan jamak (plural).
+     */
+    protected $table = 'indikators';
+
+    /**
+     * ⚠️ KONFIGURASI PRIMARY KEY (PK)
+     * Karena tabel database Anda menggunakan 'id_indikator' (bukan default 'id'),
+     * baris ini SANGAT WAJIB.
+     * Tanpa baris ini, Eloquent akan mencari kolom 'id' dan menyebabkan error saat update/delete.
+     */
+    protected $primaryKey = 'id_indikator';
+
+    /**
+     * Daftar kolom yang aman untuk diisi secara massal (Mass Assignment).
+     * Pastikan semua input dari form ada di sini.
+     */
+    protected $fillable = [
+        'pernyataan_indikator',
+        'id_kriteria', // Foreign Key ke tabel Kriteria
+        'id_standar',  // Foreign Key ke tabel Standar
+    ];
+
+    /**
+     * Relasi ke Model Kriteria (Many-to-One).
+     * Membaca: "Indikator ini milik sebuah Kriteria".
+     * Parameter ke-2 ('id_kriteria') adalah nama kolom Foreign Key di tabel indikators ini.
+     */
+    public function kriteria()
+    {
+        return $this->belongsTo(Kriteria::class, 'id_kriteria');
+    }
+
+    /**
+     * Relasi ke Model Standar (Many-to-One).
+     * Membaca: "Indikator ini mengacu pada sebuah Standar".
+     */
+    public function standar()
+    {
+        return $this->belongsTo(Standar::class, 'id_standar');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\JadwalAudit.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class JadwalAudit extends Model
+{
+    /**
+     * Nama tabel di database.
+     */
+    protected $table = 'jadwal_audits';
+
+    /**
+     * ⚠️ KONFIGURASI PRIMARY KEY
+     * Karena tabel menggunakan 'id_jadwal' (bukan default 'id'), kita wajib mendefinisikannya.
+     * Ini penting agar fungsi find($id) atau route binding bekerja dengan benar.
+     */
+    protected $primaryKey = 'id_jadwal';
+
+    /**
+     * 🔓 MASS ASSIGNMENT: GUARDED vs FILLABLE
+     * Berbeda dengan model lain yang menggunakan '$fillable' (Whitelist/Daftar Putih),
+     * model ini menggunakan '$guarded' (Blacklist/Daftar Hitam).
+     * * - $guarded = []; // Array kosong artinya TIDAK ADA kolom yang dilarang.
+     * Semua kolom di tabel ini BOLEH diisi secara massal (create/update).
+     * * Keuntungannya: Lebih praktis, tidak perlu update model setiap nambah kolom baru.
+     * Risikonya: Harus hati-hati validasi di Controller agar user tidak input data sembarangan.
+     */
+    protected $guarded = [];
+
+    /**
+     * Relasi One-to-Many ke Detail (Header-Detail Pattern).
+     * * Konsepnya:
+     * - JadwalAudit (Header): Menyimpan info umum (Tahun, No SK, Tanggal Mulai/Selesai).
+     * - JadwalAuditDetail (Detail): Menyimpan baris-baris isinya (Siapa Auditornya, Ke Departemen mana).
+     * * Param ke-2 ('id_jadwal') adalah Foreign Key yang ada di tabel 'jadwal_audit_details'.
+     */
+    public function details()
+    {
+        return $this->hasMany(JadwalAuditDetail::class, 'id_jadwal');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\Kriteria.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Kriteria extends Model
+{
+    use HasFactory;
+
+    /**
+     * Nama tabel di database.
+     * Kita mendefinisikannya secara eksplisit untuk memastikan Eloquent
+     * menarget tabel yang benar, meskipun nama modelnya singular.
+     */
+    protected $table = 'kriterias';
+
+    /**
+     * ⚠️ WAJIB: KONFIGURASI PRIMARY KEY (PK)
+     * Laravel secara default menganggap PK adalah kolom bernama 'id'.
+     * Karena database Anda menggunakan 'id_kriteria', baris ini WAJIB ada.
+     * * Tanpa ini:
+     * - Kriteria::find(1) -> Error atau return null
+     * - $kriteria->save() -> Error saat update
+     * - $kriteria->delete() -> Error "Unknown column id"
+     */
+    protected $primaryKey = 'id_kriteria';
+
+    /**
+     * Mass Assignment Protection.
+     * Kolom-kolom yang diizinkan untuk diisi lewat method create() atau update().
+     */
+    protected $fillable = [
+        'kriteria',   // Nama/Deskripsi Kriteria
+        'id_lingkup', // Foreign Key
+    ];
+
+    /**
+     * Relasi ke Model Lingkup (Many-to-One).
+     * Membaca: "Satu Kriteria dimiliki oleh satu Lingkup".
+     * * Contoh penggunaan:
+     * $kriteria->lingkup->nama_lingkup; // Mengambil nama lingkup terkait
+     */
+    public function lingkup()
+    {
+        return $this->belongsTo(Lingkup::class, 'id_lingkup');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\Lingkup.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Lingkup extends Model
+{
+    use HasFactory;
+
+    /**
+     * Nama tabel di database.
+     * Mengikat model ini secara eksplisit ke tabel 'lingkups'.
+     */
+    protected $table = 'lingkups';
+
+    /**
+     * KONFIGURASI PRIMARY KEY (CRITICAL)
+     * Sama seperti model lainnya di project ini, karena database menggunakan
+     * penamaan 'id_lingkup' (bukan 'id'), baris ini WAJIB ada.
+     * Jika dihapus, fitur edit/hapus akan error.
+     */
+    protected $primaryKey = 'id_lingkup';
+
+    /**
+     * Mass Assignment Protection.
+     * Mencegah input field tak dikenal masuk ke query database.
+     */
+    protected $fillable = [
+        'nama_lingkup',
+    ];
+
+    /* * 💡 CATATAN RELASI (OPSIONAL):
+     * Karena di model 'Kriteria' ada "belongsTo(Lingkup::class)",
+     * biasanya di sini ada relasi kebalikannya (One-to-Many).
+     * * Jika nanti Anda butuh menampilkan: "Lingkup A punya kriteria apa saja?",
+     * Anda bisa tambahkan kode ini:
+     * * public function kriteria()
+     * {
+     * return $this->hasMany(Kriteria::class, 'id_lingkup');
+     * }
+     */
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\Menu.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Menu extends Model
+{
+    protected $fillable = [
+        'title',
+        'icon',
+        'route',
+        'parent_id',
+        'order',
+        'permission_name',
+    ];
+
+    /**
+     * Relasi menu anak (nested menu)
+     */
+    public function children(): HasMany
+    {
+        return $this->hasMany(Menu::class, 'parent_id')
+            ->with('children')
+            ->orderBy('order');
+    }
+
+    /**
+     * Relasi menu induk (jika nested)
+     */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Menu::class, 'parent_id');
+    }
+
+    /**
+     * Scope: hanya menu root (tanpa parent)
+     */
+    public function scopeRoot($query)
+    {
+        return $query->whereNull('parent_id');
+    }
+
+    /**
+     * Scope: menu yang dapat diakses oleh user (berdasarkan permission)
+     */
+    public function scopeForUser($query, $user)
+    {
+        return $query->where(function ($q) use ($user) {
+            $q->whereNull('permission_name')
+                ->orWhereIn('permission_name', $user->getAllPermissions()->pluck('name'));
+        });
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\News.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+
+class News extends Model
+{
+    /**
+     * Daftar kolom yang aman untuk diisi massal.
+     * Pastikan input form sesuai dengan nama-nama ini.
+     */
+    protected $fillable = ['title', 'slug', 'content', 'image'];
+
+    /**
+     * ✨ VIRTUAL ATTRIBUTE (APPENDS)
+     * Menambahkan key 'image_url' ke dalam hasil output JSON / Array model ini.
+     * Sangat berguna untuk Frontend (Inertia/React) agar tidak perlu
+     * merakit URL gambar secara manual.
+     */
+    protected $appends = ['image_url'];
+
+    /**
+     * ⚙️ MODEL BOOT / EVENT LISTENER
+     * Method ini dijalankan otomatis saat Model diinisialisasi.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Event 'creating': Dijalankan SESAAT SEBELUM data baru disimpan ke DB.
+        static::creating(function ($news) {
+            // 🤖 AUTO-SLUG GENERATOR
+            // Jika Controller lupa membuat slug, Model ini akan membuatnya otomatis dari Title.
+            // Contoh: "Berita Hari Ini" -> "berita-hari-ini"
+            // Note: Logika ini membuat controller menjadi lebih bersih (Fat Model, Skinny Controller).
+            $news->slug = Str::slug($news->title);
+        });
+    }
+
+    /**
+     * 🔗 ACCESSOR: getImageUrlAttribute
+     * Logika untuk atribut virtual 'image_url' di atas.
+     *
+     * Fungsi:
+     * Mengubah path relatif database ("uploads/news/foto.jpg")
+     * Menjadi URL lengkap ("http://website.com/storage/uploads/news/foto.jpg")
+     *
+     * Cara akses di code: $news->image_url
+     */
+    public function getImageUrlAttribute()
+    {
+        // Cek apakah ada data image, jika ada bungkus dengan asset(), jika tidak return null
+        return $this->image ? asset('storage/' . $this->image) : null;
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\Pami.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Pami extends Model
+{
+    use HasFactory;
+
+    protected $table = 'pamis';
+    protected $guarded = [];
+
+    // Relasi opsional jika dibutuhkan nanti
+    public function indikator()
+    {
+        return $this->belongsTo(Indikator::class, 'id_indikator');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\SettingApp.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class SettingApp extends Model
+{
+    protected $table = 'settingapp';
+
+    protected $fillable = [
+        'nama_app',
+        'deskripsi',
+        'logo',
+        'favicon',
+        'warna',
+        'seo',
+    ];
+
+    protected $casts = [
+        'seo' => 'array',
+    ];
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\Standar.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Standar extends Model
+{
+    use HasFactory;
+
+    /**
+     * Nama tabel di database.
+     * Mendefinisikan secara eksplisit bahwa model ini terikat ke tabel 'standars'.
+     */
+    protected $table = 'standars';
+
+    /**
+     * ⚠️ WAJIB: KONFIGURASI PRIMARY KEY (PK)
+     * Laravel default-nya mencari kolom 'id'.
+     * Karena tabel ini menggunakan 'id_standar', baris ini SANGAT PENTING.
+     * Jika terlewat, fungsi delete() atau find($id) akan gagal.
+     */
+    protected $primaryKey = 'id_standar';
+
+    /**
+     * Mass Assignment Protection.
+     * Daftar kolom yang aman untuk diisi via input form (create/update).
+     */
+    protected $fillable = [
+        'pernyataan_standar', // Isi/Teks standar auditnya
+        'id_kriteria',        // FK ke tabel Kriteria
+        'id_departemen',      // FK ke tabel Departemen (Siapa penanggung jawab standar ini)
+    ];
+
+    /**
+     * Relasi ke Model Kriteria (Many-to-One).
+     * Membaca: "Standar ini merupakan bagian dari Kriteria X".
+     * Parameter ke-2 ('id_kriteria') adalah nama kolom Foreign Key di tabel ini.
+     */
+    public function kriteria()
+    {
+        return $this->belongsTo(Kriteria::class, 'id_kriteria');
+    }
+
+    /**
+     * Relasi ke Model Departemen (Many-to-One).
+     * Membaca: "Standar ini dibebankan/dimiliki oleh Departemen Y".
+     * Ini berguna untuk memfilter standar berdasarkan departemen auditee.
+     */
+    public function departemen()
+    {
+        return $this->belongsTo(Departemen::class, 'id_departemen');
+    }
+
+    public function indikators()
+    {
+        // Relasi ke tabel Indikator
+        return $this->hasMany(Indikator::class, 'id_standar');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Models\User.php
+<?php
+
+namespace App\Models;
+
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Spatie\Permission\Traits\HasRoles;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Spatie\MediaLibrary\InteractsWithMedia;
+use Spatie\MediaLibrary\HasMedia;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class User extends Authenticatable implements HasMedia
+{
+    /** @use HasFactory<\Database\Factories\UserFactory> */
+    use HasFactory, Notifiable, HasRoles, InteractsWithMedia;
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var list<string>
+     */
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+    ];
+
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+        ];
+    }
+    public function departemens(): HasMany
+    {
+        return $this->hasMany(Departemen::class, 'user_id', 'id');
+    }
+}

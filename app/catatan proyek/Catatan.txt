@@ -1,0 +1,7 @@
+- Setelah Auditor memberikan penilaian , hasil nya muncul di PTK
+- auditee pada dokumen bisa upload dokumen atau hanya memberikan komentar atau ketik teks
+- pencatatan akan mucul semua kategory pernilaian
+- permohonan akan masuk yang 3 observasi setelah auditor membuat CAR dan akan hilang pada penilaian
+- penilaian hanya ada jadwal yang belum dinilai
+- popup sumpan nilai akan mulcar apabila nilai kurang dan apabila melampai akan sempan saja dan pindah ke permohonan atau pencatatan apabila melampaui
+- membuat file pada dokumen menjadi public tapi hanya yang punya alamat link yang dapat melihat

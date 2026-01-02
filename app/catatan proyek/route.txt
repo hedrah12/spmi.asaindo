@@ -1,0 +1,239 @@
+auth.php
+<?php
+
+use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\ConfirmablePasswordController;
+use App\Http\Controllers\Auth\EmailVerificationNotificationController;
+use App\Http\Controllers\Auth\EmailVerificationPromptController;
+use App\Http\Controllers\Auth\NewPasswordController;
+use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\VerifyEmailController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware('guest')->group(function () {
+
+    Route::get('login', [AuthenticatedSessionController::class, 'create'])
+        ->name('login');
+
+    Route::post('login', [AuthenticatedSessionController::class, 'store']);
+
+    Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
+        ->name('password.request');
+
+    Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->name('password.email');
+
+    Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])
+        ->name('password.reset');
+
+    Route::post('reset-password', [NewPasswordController::class, 'store'])
+        ->name('password.store');
+});
+
+Route::middleware('auth')->group(function () {
+    Route::get('verify-email', EmailVerificationPromptController::class)
+        ->name('verification.notice');
+
+    Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+
+    Route::post('email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('verification.send');
+
+    Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
+        ->name('password.confirm');
+
+    Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
+
+    Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
+        ->name('logout');
+});
+
+console.php
+<?php
+
+use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Facades\Artisan;
+
+Artisan::command('inspire', function () {
+    $this->comment(Inspiring::quote());
+})->purpose('Display an inspiring quote');
+
+setting.php
+<?php
+
+use App\Http\Controllers\Settings\PasswordController;
+use App\Http\Controllers\Settings\ProfileController;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+
+Route::middleware('auth')->group(function () {
+    Route::redirect('settings', 'settings/profile');
+
+    Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    Route::get('settings/password', [PasswordController::class, 'edit'])->name('password.edit');
+    Route::put('settings/password', [PasswordController::class, 'update'])->name('password.update');
+
+    Route::get('settings/appearance', function () {
+        return Inertia::render('settings/appearance');
+    })->name('appearance');
+});
+
+web.php
+<?php
+
+use Inertia\Inertia;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\{
+    PtkController,
+    RtlController,
+    MenuController,
+    NewsController,
+    PamiController,
+    RoleController,
+    UserController,
+    BackupController,
+    LingkupController,
+    StandarController,
+    AuditLogController,
+    KriteriaController,
+    IndikatorController,
+    KkriteriaController,
+    DepartemenController,
+    PermissionController,
+    SettingAppController,
+    FileManagerController,
+    ButirKriteriaController,
+    JadwalAuditController
+};
+
+/*
+|--------------------------------------------------------------------------
+| Public Routes
+|--------------------------------------------------------------------------
+*/
+Route::get('/', [NewsController::class, 'landing'])->name('home');
+Route::get('/berita', [NewsController::class, 'publicIndex'])->name('public.news.index');
+Route::get('/berita/{slug}', [NewsController::class, 'show'])->name('public.news.show');
+
+/*
+|--------------------------------------------------------------------------
+| Authenticated Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'menu.permission'])->group(function () {
+
+    Route::get('/dashboard', function () {
+        return Inertia::render('dashboard');
+    })->name('dashboard');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Role & Permission
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/switch-role', [RoleController::class, 'switchRole'])->name('role.switch');
+    Route::resource('roles', RoleController::class);
+    Route::resource('permissions', PermissionController::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | User Management
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('users', UserController::class);
+    Route::put('/users/{user}/reset-password', [UserController::class, 'resetPassword'])
+        ->name('users.reset-password');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Menu Management
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('menus', MenuController::class);
+    Route::post('menus/reorder', [MenuController::class, 'reorder'])->name('menus.reorder');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Settings & Logs
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/settingsapp', [SettingAppController::class, 'edit'])->name('setting.edit');
+    Route::post('/settingsapp', [SettingAppController::class, 'update'])->name('setting.update');
+    Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Backup
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/backup', [BackupController::class, 'index'])->name('backup.index');
+    Route::post('/backup/run', [BackupController::class, 'run'])->name('backup.run');
+    Route::get('/backup/download/{file}', [BackupController::class, 'download'])->name('backup.download');
+    Route::delete('/backup/delete/{file}', [BackupController::class, 'delete'])->name('backup.delete');
+
+    /*
+    |--------------------------------------------------------------------------
+    | SPMI Pami Module
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/pami', [PamiController::class, 'index'])->name('pami.index');
+    Route::post('/pami', [PamiController::class, 'store'])->name('pami.store');
+
+      /*
+    |--------------------------------------------------------------------------
+    | SPMI Modules
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/ptk', [PtkController::class, 'index'])->name('ptk.index');
+    Route::get('/rtl', [RtlController::class, 'index'])->name('rtl.index');
+    Route::get('/kkriteria', [KkriteriaController::class, 'index'])->name('kkriteria.index');
+
+    Route::resource('indikator', IndikatorController::class);
+    Route::resource('lingkup', LingkupController::class);
+    Route::resource('departemen', DepartemenController::class);
+    Route::resource('standar', StandarController::class);
+    Route::resource('kriteria', KriteriaController::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | News (Admin)
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('News', NewsController::class)->except(['show']);
+    /*
+    |--------------------------------------------------------------------------
+    | Jaudwal Audit Management
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/jadwal', [JadwalAuditController::class, 'index'])->name('jadwal.index');
+    Route::post('/jadwal', [JadwalAuditController::class, 'store'])->name('jadwal.store');
+    Route::put('/jadwal/{id}', [JadwalAuditController::class, 'update'])->name('jadwal.update');
+    Route::delete('/jadwal/{id}', [JadwalAuditController::class, 'destroy'])->name('jadwal.destroy');
+
+    /*
+    |--------------------------------------------------------------------------
+    | File Manager (DSPMI)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/dspmi', [FileManagerController::class, 'index'])->name('dspmi.index');
+
+    // Aksi Folder
+    Route::post('/folder', [FileManagerController::class, 'storeFolder'])->name('folder.store');
+    Route::put('/folder/{folder}', [FileManagerController::class, 'updateFolder'])->name('folder.update');
+    Route::delete('/folder/{folder}', [FileManagerController::class, 'destroyFolder'])->name('folder.destroy');
+
+    // Aksi File
+    Route::post('/file', [FileManagerController::class, 'storeFile'])->name('file.store');
+    Route::delete('/file/{file}', [FileManagerController::class, 'destroyFile'])->name('file.destroy');
+
+});
+
+require __DIR__.'/settings.php';
+require __DIR__.'/auth.php';

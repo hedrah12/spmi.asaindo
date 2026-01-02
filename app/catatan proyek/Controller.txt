@@ -1,0 +1,2285 @@
+
+code full
+
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\AuditLogController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Spatie\Activitylog\Models\Activity;
+
+class AuditLogController extends Controller
+{
+    public function index(Request $request)
+    {
+        $logs = Activity::with('causer')
+            ->orderByDesc('created_at')
+            ->paginate(20);
+
+        return Inertia::render('auditlogs/Index', [
+            'logs' => $logs,
+        ]);
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\BackupController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\File;
+use Inertia\Inertia;
+
+class BackupController extends Controller
+{
+    protected string $backupPath = 'private/Laravel';
+
+    public function index()
+    {
+        $realPath = storage_path('app/' . $this->backupPath);
+
+        $files = File::exists($realPath) ? File::files($realPath) : [];
+
+        $backups = collect($files)
+            ->filter(fn($file) => $file->getExtension() === 'zip')
+            ->map(fn($file) => [
+                'name' => $file->getFilename(),
+                'size' => $file->getSize(),
+                'last_modified' => $file->getMTime(),
+                'download_url' => route('backup.download', ['file' => $file->getFilename()]),
+            ])
+            ->sortByDesc('last_modified')
+            ->values();
+
+        return Inertia::render('backup/Index', [
+            'backups' => $backups,
+        ]);
+    }
+
+    public function run()
+    {
+        Artisan::call('backup:run --only-db');
+        return redirect()->back()->with('success', 'Backup berhasil dibuat.');
+    }
+
+    public function download($file)
+    {
+        $path = storage_path('app/' . $this->backupPath . '/' . $file);
+
+        if (!file_exists($path)) {
+            abort(404, 'File tidak ditemukan.');
+        }
+
+        return response()->download($path);
+    }
+
+    public function delete($file)
+    {
+        $path = storage_path('app/' . $this->backupPath . '/' . $file);
+
+        if (!file_exists($path)) {
+            return redirect()->back()->with('error', 'File tidak ditemukan.');
+        }
+
+        unlink($path);
+
+        return redirect()->back()->with('success', 'Backup berhasil dihapus.');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\ButirKriteriaController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\ButirKriteria;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+
+class ButirKriteriaController extends Controller
+{
+    public function index()
+    {
+
+        return Inertia::render('butirkriteria/Index');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\Controller.php
+<?php
+
+namespace App\Http\Controllers;
+
+abstract class Controller
+{
+    //
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\DepartemenController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Departemen;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Illuminate\Support\Facades\Auth;
+
+/**
+ * DepartemenController
+ * * Mengelola CRUD (Create, Read, Update, Delete) untuk Master Data Departemen.
+ * Controller ini berinteraksi dengan tabel 'departemens'.
+ */
+class DepartemenController extends Controller
+{
+    /**
+     * Menampilkan halaman daftar departemen.
+     * Mendukung fitur pencarian dan sorting berdasarkan data terbaru.
+     *
+     * @param Request $request
+     * @return \Inertia\Response
+     */
+    public function index(Request $request)
+    {
+        // Inisialisasi query builder
+        $query = Departemen::query();
+
+        // Logika Pencarian: Filter berdasarkan nama_departemen jika ada parameter 'search'
+        if ($request->has('search')) {
+            $query->where('nama_departemen', 'like', '%' . $request->search . '%');
+        }
+
+        // Mengambil data urut dari yang paling baru (LIFO) berdasarkan primary key custom 'id_departemen'
+        $departemens = $query->orderBy('id_departemen', 'desc')->get();
+
+        // Render view React/Vue via Inertia dengan mengirimkan data prop
+        return Inertia::render('departemen/Index', [
+            'data' => $departemens,
+            // Mengembalikan state filter agar input search di frontend tidak reset
+            'filters' => $request->only(['search']),
+        ]);
+    }
+
+    /**
+     * Menyimpan data departemen baru ke database.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function store(Request $request)
+    {
+        // Validasi input dari frontend
+        $request->validate([
+            'namaDepartemen' => 'required|string|max:255',
+        ]);
+
+        // Simpan ke database
+        Departemen::create([
+            // Mapping input camelCase (dari React) ke snake_case (Database)
+            'nama_departemen' => $request->namaDepartemen,
+
+            // Mengisi 'user_id' (Penanggung Jawab) dengan user yang sedang login
+            'user_id' => Auth::id(),
+        ]);
+
+        // Redirect kembali ke halaman index dengan pesan flash message
+        return redirect()->back()->with('message', 'Departemen berhasil ditambahkan');
+    }
+
+    /**
+     * Memperbarui data departemen yang sudah ada.
+     *
+     * @param Request $request
+     * @param int $id ID Departemen (id_departemen)
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'namaDepartemen' => 'required|string|max:255',
+        ]);
+
+        // Cari data berdasarkan Primary Key custom ($primaryKey = 'id_departemen' di Model)
+        // Jika tidak ketemu, otomatis return 404
+        $departemen = Departemen::findOrFail($id);
+
+        $departemen->update([
+            'nama_departemen' => $request->namaDepartemen,
+        ]);
+
+        return redirect()->back()->with('message', 'Departemen berhasil diperbarui');
+    }
+
+    /**
+     * Menghapus data departemen.
+     *
+     * @param int $id ID Departemen
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function destroy($id)
+    {
+        $departemen = Departemen::findOrFail($id);
+
+        // Melakukan soft delete atau hard delete tergantung konfigurasi Model
+        $departemen->delete();
+
+        return redirect()->back()->with('message', 'Departemen berhasil dihapus');
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\FileManagerController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\File;
+use App\Models\Folder;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+
+class FileManagerController extends Controller
+{
+    public function index()
+    {
+        return Inertia::render('dspmi/Index', [
+            'folders' => Folder::all(), // Frontend yang akan menyusun tree-nya
+            'files' => File::orderBy('created_at', 'desc')->get()
+        ]);
+    }
+
+    public function storeFolder(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'parent_id' => 'nullable|exists:folders,id'
+        ]);
+
+        Folder::create([
+            'name' => $request->name,
+            'parent_id' => $request->parent_id
+        ]);
+
+        return back()->with('success', 'Folder berhasil dibuat.');
+    }
+
+    public function updateFolder(Request $request, Folder $folder)
+    {
+        $request->validate(['name' => 'required|string|max:255']);
+
+        $folder->update(['name' => $request->name]);
+
+        return back()->with('success', 'Folder berhasil diubah.');
+    }
+
+    public function destroyFolder(Folder $folder)
+    {
+        // Model Observer di Folder akan menangani penghapusan sub-folder/file
+        $folder->delete();
+        return back()->with('success', 'Folder berhasil dihapus.');
+    }
+
+    public function storeFile(Request $request)
+    {
+        $request->validate([
+            'files.*' => 'required|file|max:20480', // Maks 20MB
+            'folder_id' => 'nullable|exists:folders,id' // Nullable = boleh di root
+        ]);
+
+        if ($request->hasFile('files')) {
+            DB::transaction(function () use ($request) {
+                foreach ($request->file('files') as $file) {
+                    // Simpan fisik
+                    $path = $file->store('uploads', 'public');
+
+                    // Simpan DB
+                    File::create([
+                        'name' => $file->getClientOriginalName(),
+                        'path' => $path,
+                        'mime_type' => $file->getMimeType(),
+                        'size' => $file->getSize(),
+                        'folder_id' => $request->folder_id // Bisa null
+                    ]);
+                }
+            });
+        }
+
+        return back()->with('success', 'File berhasil diupload.');
+    }
+
+    public function destroyFile(File $file)
+    {
+        // Model Observer di File akan menghapus fisik file
+        $file->delete();
+        return back()->with('success', 'File berhasil dihapus.');
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\IndikatorController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Indikator;
+use App\Models\Kriteria;
+use App\Models\Standar;
+use App\Models\Lingkup;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+
+/**
+ * IndikatorController
+ * * Mengelola data 'Indikator' yang merupakan level terbawah dari hierarki SPMI.
+ * * Hierarki: Lingkup -> Kriteria -> Standar -> Indikator.
+ */
+class IndikatorController extends Controller
+{
+    /**
+     * Menampilkan daftar indikator dan data master untuk form.
+     * Mengirimkan data relasi lengkap untuk keperluan tabel dan dropdown bertingkat (Cascading Select).
+     *
+     * @param Request $request
+     * @return \Inertia\Response
+     */
+    public function index(Request $request)
+    {
+        // 1. Query Data Utama (Indikator)
+        // Menggunakan Eager Loading ('with') untuk memanggil relasi orang tua (Standar)
+        // dan kakek-neneknya (Kriteria -> Lingkup) agar bisa ditampilkan di tabel UI.
+        // Mencegah masalah N+1 Query.
+        $query = Indikator::with(['standar', 'kriteria.lingkup']);
+
+        // Logika Pencarian
+        if ($request->has('search')) {
+            $query->where('pernyataan_indikator', 'like', '%' . $request->search . '%');
+        }
+
+        // Ambil data urut dari yang terbaru
+        $indikators = $query->orderBy('id_indikator', 'desc')->get();
+
+        // 2. Data Master untuk Dropdown (Cascading Select di Frontend)
+        // Frontend membutuhkan data ini agar saat user memilih 'Lingkup',
+        // dropdown 'Kriteria' bisa difilter, dan seterusnya.
+
+        $lingkups = Lingkup::all();
+        $kriterias = Kriteria::all();
+
+        // Penting: Kita mengambil 'id_kriteria' di tabel Standar.
+        // Ini digunakan oleh Frontend (React) untuk memfilter Standar mana saja
+        // yang muncul ketika user memilih Kriteria tertentu.
+        $standars = Standar::select('id_standar', 'pernyataan_standar', 'id_kriteria')->get();
+
+        return Inertia::render('indikator/Index', [
+            'data' => $indikators,
+            'masterData' => [
+                'lingkups' => $lingkups,
+                'kriterias' => $kriterias,
+                'standars' => $standars,
+            ],
+            'filters' => $request->only(['search']),
+        ]);
+    }
+
+    /**
+     * Menyimpan indikator baru.
+     * Memastikan indikator terhubung ke Kriteria dan Standar yang valid.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'namaIndikator' => 'required|string',
+            // Validasi Foreign Key: Pastikan ID yang dikirim benar-benar ada di tabel induknya
+            'id_kriteria' => 'required|exists:kriterias,id_kriteria',
+            'id_standar' => 'required|exists:standars,id_standar',
+        ]);
+
+        Indikator::create([
+            'pernyataan_indikator' => $request->namaIndikator,
+            'id_kriteria' => $request->id_kriteria,
+            'id_standar' => $request->id_standar,
+        ]);
+
+        return redirect()->back()->with('message', 'Indikator berhasil ditambahkan');
+    }
+
+    /**
+     * Memperbarui data indikator.
+     *
+     * @param Request $request
+     * @param int $id ID Indikator
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'namaIndikator' => 'required|string',
+            'id_kriteria' => 'required|exists:kriterias,id_kriteria',
+            'id_standar' => 'required|exists:standars,id_standar',
+        ]);
+
+        $indikator = Indikator::findOrFail($id);
+
+        $indikator->update([
+            'pernyataan_indikator' => $request->namaIndikator,
+            'id_kriteria' => $request->id_kriteria, // Update relasi jika user mengubah parent
+            'id_standar' => $request->id_standar,
+        ]);
+
+        return redirect()->back()->with('message', 'Indikator berhasil diperbarui');
+    }
+
+    /**
+     * Menghapus indikator.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function destroy($id)
+    {
+        $indikator = Indikator::findOrFail($id);
+        $indikator->delete();
+
+        return redirect()->back()->with('message', 'Indikator berhasil dihapus');
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\JadwalAuditController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\JadwalAudit;
+use App\Models\JadwalAuditDetail;
+use App\Models\Departemen;
+use App\Models\User;
+// IMPORT MODEL HIERARKI (Wajib ada agar modal detail berjalan)
+use App\Models\Lingkup;
+use App\Models\Kriteria;
+use App\Models\Standar;
+
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Illuminate\Support\Facades\DB;
+
+class JadwalAuditController extends Controller
+{
+    /**
+     * Menampilkan daftar jadwal audit & Data Master untuk Modal.
+     */
+    public function index(Request $request)
+    {
+        // 1. Ambil Data Jadwal (Header + Detail + Auditor + Departemen)
+        $query = JadwalAudit::with(['details.auditor', 'details.departemen']);
+
+        // Filter Pencarian
+        if ($request->has('search')) {
+            $query->where('tahun', 'like', '%' . $request->search . '%')
+                  ->orWhere('no_sk', 'like', '%' . $request->search . '%');
+        }
+
+        // 2. Ambil Data Master Hierarki (Khusus untuk Modal Detail)
+        // Kita gunakan 'with' agar relasi indikator juga terambil (Eager Loading)
+        // Tanpa ini, data indikator di frontend akan undefined
+        $standars = Standar::with('indikators')->get();
+
+        return Inertia::render('jadwal/Index', [
+            'data' => $query->latest('id_jadwal')->get(),
+
+            // Paket Master Data Lengkap untuk Frontend
+            'masterData' => [
+                // Untuk Form Input
+                'users'       => User::all(),
+                'departemens' => Departemen::all(),
+
+                // Untuk Modal Detail (Hierarki Standar)
+                'lingkups'    => Lingkup::all(),
+                'kriterias'   => Kriteria::all(),
+                'standars'    => $standars,
+            ],
+            'filters' => $request->only(['search']),
+        ]);
+    }
+
+    /**
+     * Simpan Jadwal Baru
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'tahun'       => 'required',
+            'tgl_mulai'   => 'required|date',
+            'tgl_selesai' => 'required|date|after_or_equal:tgl_mulai',
+            'details'     => 'array|min:1',
+            'details.*.user_id'       => 'required|exists:users,id',
+            'details.*.id_departemen' => 'required|exists:departemens,id_departemen',
+        ]);
+
+        DB::transaction(function () use ($request) {
+            // 1. Header
+            $jadwal = JadwalAudit::create([
+                'tahun'       => $request->tahun,
+                'no_sk'       => $request->no_sk,
+                'tgl_mulai'   => $request->tgl_mulai,
+                'tgl_selesai' => $request->tgl_selesai,
+            ]);
+
+            // 2. Detail
+            foreach ($request->details as $detail) {
+                JadwalAuditDetail::create([
+                    'id_jadwal'     => $jadwal->id_jadwal,
+                    'user_id'       => $detail['user_id'],
+                    'id_departemen' => $detail['id_departemen'],
+                ]);
+            }
+        });
+
+        return redirect()->back()->with('message', 'Jadwal Audit berhasil dibuat');
+    }
+
+    /**
+     * Update Jadwal
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'tahun'     => 'required',
+            'tgl_mulai' => 'required|date',
+            'details'   => 'array',
+        ]);
+
+        DB::transaction(function () use ($request, $id) {
+            $jadwal = JadwalAudit::findOrFail($id);
+
+            // Update Header
+            $jadwal->update([
+                'tahun'       => $request->tahun,
+                'no_sk'       => $request->no_sk,
+                'tgl_mulai'   => $request->tgl_mulai,
+                'tgl_selesai' => $request->tgl_selesai,
+            ]);
+
+            // Reset Detail
+            $jadwal->details()->delete();
+
+            // Insert Ulang Detail
+            foreach ($request->details as $detail) {
+                JadwalAuditDetail::create([
+                    'id_jadwal'     => $jadwal->id_jadwal,
+                    'user_id'       => $detail['user_id'],
+                    'id_departemen' => $detail['id_departemen'],
+                ]);
+            }
+        });
+
+        return redirect()->back()->with('message', 'Jadwal Audit diperbarui');
+    }
+
+    /**
+     * Hapus Jadwal
+     */
+    public function destroy($id)
+    {
+        JadwalAudit::findOrFail($id)->delete();
+        return redirect()->back()->with('message', 'Data dihapus');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\KkriteriaController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Inertia\Inertia;
+
+class KkriteriaController extends Controller
+{
+    public function index()
+    {
+        // Render ke halaman React bernama "Pencatatan Koreksi Lanjut/Index"
+        return Inertia::render('kkriteria/Index');
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\KriteriaController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Kriteria;
+use App\Models\Lingkup;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+
+/**
+ * KriteriaController
+ * * Mengelola data 'Kriteria' (Level 2 dalam hierarki SPMI).
+ * * Relasi: Lingkup (Parent) -> Kriteria (Child).
+ */
+class KriteriaController extends Controller
+{
+    /**
+     * Menampilkan daftar kriteria.
+     * Menggunakan teknik JOIN untuk melakukan sorting berdasarkan nama tabel induk (Lingkup).
+     *
+     * @param Request $request
+     * @return \Inertia\Response
+     */
+    public function index(Request $request)
+    {
+        // 1. Setup Query
+        // 'with': Eager Loading standar agar data lingkup tersedia di frontend (property kriteria.lingkup)
+        // 'join': Dibutuhkan agar kita bisa melakukan ORDER BY 'lingkups.nama_lingkup'
+        $query = Kriteria::with('lingkup')
+            ->join('lingkups', 'lingkups.id_lingkup', '=', 'kriterias.id_lingkup');
+
+        // 2. Filter Pencarian
+        if ($request->has('search')) {
+            // Kita harus spesifik menyebut 'kriterias.kriteria' karena kita melakukan join,
+            // untuk menghindari ambiguitas jika ada nama kolom yang sama.
+            $query->where('kriterias.kriteria', 'like', '%' . $request->search . '%');
+        }
+
+        // 3. Eksekusi Query
+        $kriterias = $query
+            // Sorting Logic:
+            // Urutkan dulu berdasarkan Nama Lingkup (Grouping effect secara visual)
+            ->orderBy('lingkups.nama_lingkup', 'asc')
+            // Lalu urutkan berdasarkan Nama Kriteria itu sendiri
+            ->orderBy('kriterias.kriteria', 'asc')
+
+            // PENTING: Karena kita melakukan Join, kolom 'id', 'created_at', dll bisa bentrok.
+            // Kita paksa hanya mengambil kolom dari tabel 'kriterias'.
+            // Data 'lingkup' tetap terambil lewat mekanisme 'with' (Eager Loading) di atas.
+            ->select('kriterias.*')
+            ->get();
+
+        // 4. Data Master untuk Dropdown
+        $lingkups = Lingkup::orderBy('nama_lingkup', 'asc')->get();
+
+        return Inertia::render('kriteria/Index', [
+            'data' => $kriterias,
+            'lingkups' => $lingkups,
+            'filters' => $request->only(['search']),
+        ]);
+    }
+
+    /**
+     * Menyimpan Kriteria baru.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'namaKriteria' => 'required|string|max:255',
+            // Validasi Foreign Key: Pastikan id_lingkup benar-benar ada
+            'id_lingkup'   => 'required|exists:lingkups,id_lingkup',
+        ]);
+
+        Kriteria::create([
+            'kriteria'   => $request->namaKriteria,
+            'id_lingkup' => $request->id_lingkup,
+        ]);
+
+        return redirect()->back()->with('message', 'Kriteria berhasil ditambahkan');
+    }
+
+    /**
+     * Memperbarui Kriteria.
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'namaKriteria' => 'required|string|max:255',
+            'id_lingkup'   => 'required|exists:lingkups,id_lingkup',
+        ]);
+
+        // Menggunakan findOrFail agar return 404 jika ID tidak valid
+        $kriteria = Kriteria::findOrFail($id);
+
+        $kriteria->update([
+            'kriteria'   => $request->namaKriteria,
+            'id_lingkup' => $request->id_lingkup,
+        ]);
+
+        return redirect()->back()->with('message', 'Kriteria berhasil diperbarui');
+    }
+
+    /**
+     * Menghapus Kriteria.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function destroy($id)
+    {
+        $kriteria = Kriteria::findOrFail($id);
+        $kriteria->delete();
+
+        return redirect()->back()->with('message', 'Kriteria berhasil dihapus');
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\LingkupController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Lingkup;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+
+/**
+ * LingkupController
+ * * Mengelola data 'Lingkup' (Scope).
+ * * Ini adalah Level 1 (Root) dalam hierarki SPMI.
+ * * Data ini menjadi induk bagi data 'Kriteria'.
+ */
+class LingkupController extends Controller
+{
+    /**
+     * Menampilkan daftar Lingkup.
+     * Karena ini data master level teratas, query-nya sederhana (Single Table).
+     *
+     * @param Request $request
+     * @return \Inertia\Response
+     */
+    public function index(Request $request)
+    {
+        $query = Lingkup::query();
+
+        // Fitur Pencarian Sederhana
+        if ($request->has('search')) {
+            $query->where('nama_lingkup', 'like', '%' . $request->search . '%');
+        }
+
+        // Mengambil data terbaru berdasarkan Custom Primary Key 'id_lingkup'
+        // Disusun Descending agar data yang baru diinput muncul paling atas.
+        $lingkups = $query->orderBy('id_lingkup', 'desc')->get();
+
+        return Inertia::render('lingkup/Index', [
+            'data' => $lingkups,
+            // Mengembalikan state filter ke frontend agar input search tidak kosong setelah reload
+            'filters' => $request->only(['search']),
+        ]);
+    }
+
+    /**
+     * Menyimpan data Lingkup baru.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function store(Request $request)
+    {
+        // Validasi input dari form Frontend
+        $request->validate([
+            'namaLingkup' => 'required|string|max:255',
+        ]);
+
+        // Mapping Data:
+        // 'namaLingkup' (camelCase dari React) -> disimpan ke 'nama_lingkup' (snake_case di DB)
+        Lingkup::create([
+            'nama_lingkup' => $request->namaLingkup,
+        ]);
+
+        return redirect()->back()->with('message', 'Lingkup berhasil ditambahkan');
+    }
+
+    /**
+     * Memperbarui data Lingkup.
+     *
+     * @param Request $request
+     * @param int $id ID Lingkup
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'namaLingkup' => 'required|string|max:255',
+        ]);
+
+        // Menggunakan findOrFail untuk keamanan (otomatis 404 jika ID tidak ketemu)
+        $lingkup = Lingkup::findOrFail($id);
+
+        $lingkup->update([
+            'nama_lingkup' => $request->namaLingkup,
+        ]);
+
+        return redirect()->back()->with('message', 'Lingkup berhasil diperbarui');
+    }
+
+    /**
+     * Menghapus data Lingkup.
+     * PERHATIAN: Menghapus Lingkup biasanya akan memicu penghapusan berantai (Cascade)
+     * ke data anak-anaknya (Kriteria -> Standar -> Indikator) jika di-set di Migration.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function destroy($id)
+    {
+        $lingkup = Lingkup::findOrFail($id);
+        $lingkup->delete();
+
+        return redirect()->back()->with('message', 'Lingkup berhasil dihapus');
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\MediaFolderController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Folder; // Gunakan Model Folder Anda
+use App\Models\File;   // Gunakan Model File Anda
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Illuminate\Support\Facades\Storage;
+
+class MediaFolderController extends Controller
+{
+    /**
+     * Menampilkan Explorer.
+     */
+    public function index(Request $request)
+    {
+        $folderId = $request->input('folder_id');
+
+        // 1. Ambil Folder
+        // Jika sedang di root, ambil semua folder (flattened) atau hanya root folder?
+        // Biasanya untuk explorer: tampilkan folder yang parent_id-nya sesuai current folder.
+        $folders = Folder::query()
+            ->when($folderId, function ($q) use ($folderId) {
+                $q->where('parent_id', $folderId);
+            }, function ($q) {
+                $q->whereNull('parent_id'); // Root folders
+            })
+            ->orderBy('name')
+            ->get();
+
+        // 2. Cek Folder Aktif (Breadcrumb)
+        $currentFolder = null;
+        $ancestors = []; // Opsional: Untuk breadcrumb
+        if ($folderId) {
+            $currentFolder = Folder::find($folderId);
+            if (!$currentFolder) {
+                return redirect()->route('media.index'); // Sesuaikan route index Anda
+            }
+
+            // Logic untuk mengambil parent ke atas (Breadcrumb) bisa ditambahkan di sini
+        }
+
+        // 3. Ambil File
+        // Gunakan model File Anda yang sederhana (pakai column folder_id)
+        // Tidak perlu JSON Query yang rumit seperti kode sebelumnya.
+        $files = File::query()
+            ->when($folderId, function ($q) use ($folderId) {
+                $q->where('folder_id', $folderId);
+            }, function ($q) {
+                $q->whereNull('folder_id'); // Root files
+            })
+            ->latest()
+            ->get();
+
+        return Inertia::render('files/Index', [
+            'folders' => $folders,
+            'currentFolderId' => $folderId,
+            'currentFolder' => $currentFolder,
+            'files' => $files->map(function ($file) {
+                return [
+                    'id' => $file->id,
+                    'name' => $file->name,
+                    'size' => $this->formatBytes($file->size), // Helper manual
+                    'mime_type' => $file->mime_type,
+                    'url' => $file->url, // Menggunakan Accessor getUrlAttribute dari Model File Anda
+                    'created_at' => $file->created_at->diffForHumans(),
+                ];
+            }),
+        ]);
+    }
+
+    /**
+     * Membuat Folder Baru
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'parent_id' => 'nullable|exists:folders,id', // Cek ke tabel folders
+        ]);
+
+        // Simpan menggunakan Model Folder Anda
+        // Perhatikan: Model Folder Anda belum ada kolom 'user_id' di $fillable.
+        // Jika tabel database Anda tidak punya kolom user_id, hapus baris user_id di bawah.
+        Folder::create([
+            'name' => $request->name,
+            'parent_id' => $request->parent_id,
+            // 'user_id' => auth()->id(), // Uncomment jika di migrasi & model sudah ditambahkan
+        ]);
+
+        return back()->with('success', 'Folder berhasil dibuat.');
+    }
+
+    /**
+     * Upload File Baru
+     */
+    public function storeFile(Request $request)
+    {
+        $request->validate([
+            'files.*' => 'required|file|max:10240', // Max 10MB
+            'folder_id' => 'nullable|exists:folders,id'
+        ]);
+
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $uploadedFile) {
+                // Simpan fisik
+                $path = $uploadedFile->store('uploads', 'public');
+
+                // Simpan DB menggunakan Model File Anda
+                File::create([
+                    'name' => $uploadedFile->getClientOriginalName(),
+                    'path' => $path,
+                    'mime_type' => $uploadedFile->getMimeType(),
+                    'size' => $uploadedFile->getSize(),
+                    'folder_id' => $request->folder_id,
+                ]);
+            }
+        }
+
+        return back()->with('success', 'File berhasil diunggah.');
+    }
+
+    /**
+     * Menghapus Folder (Recursive otomatis lewat Model)
+     */
+    public function destroy(Folder $folder) // Type hint ke model Folder
+    {
+        // Karena di Model Folder Anda sudah ada fungsi booted() -> deleting(),
+        // maka menghapus folder ini akan OTOMATIS menghapus:
+        // 1. File di dalamnya (Database & Fisik)
+        // 2. Sub-folder di dalamnya (Recursive)
+
+        $folder->delete();
+
+        return back()->with('success', 'Folder berhasil dihapus.');
+    }
+
+    /**
+     * Menghapus File
+     */
+    public function destroyFile(File $file)
+    {
+        // Model File Anda sudah punya booted() -> deleting()
+        // yang menghapus fisik file via Storage::delete().
+        $file->delete();
+
+        return back()->with('success', 'File berhasil dihapus.');
+    }
+
+    // Helper sederhana untuk format size
+    private function formatBytes($bytes, $precision = 2) {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+
+        $bytes /= pow(1024, $pow);
+
+        return round($bytes, $precision) . ' ' . $units[$pow];
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\MenuController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Menu;
+use Inertia\Inertia;
+use Illuminate\Http\Request;
+use Spatie\Permission\Models\Permission;
+use App\Models\User;
+
+class MenuController extends Controller
+{
+    public function index(Request $request)
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $menus = Menu::with([
+            'children' => fn($q) => $q->orderBy('order')->with([
+                'children' => fn($q2) => $q2->orderBy('order'),
+            ]),
+        ])
+            ->whereNull('parent_id')
+            ->orderBy('order')
+            ->get();
+
+        return Inertia::render('menus/Index', [
+            'menuItems' => $menus,
+        ]);
+    }
+
+    public function create()
+    {
+        $menus = Menu::orderBy('title')->get();
+        $permissions = Permission::orderBy('name')->pluck('name');
+
+        return Inertia::render('menus/Form', [
+            'parentMenus' => $menus,
+            'permissions' => $permissions,
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'title' => 'required|string',
+            'icon' => 'nullable|string',
+            'route' => 'nullable|string',
+            'parent_id' => 'nullable|exists:menus,id',
+            'order' => 'nullable|integer',
+            'permission_name' => 'nullable|string|exists:permissions,name',
+        ]);
+
+        if (!isset($data['order'])) {
+            $data['order'] = Menu::where('parent_id', $data['parent_id'] ?? null)->max('order') + 1;
+        }
+
+        Menu::create($data);
+
+        return redirect()->route('menus.index')->with('success', 'Menu berhasil ditambahkan.');
+    }
+
+    public function edit(Menu $menu)
+    {
+        $menus = Menu::where('id', '!=', $menu->id)->orderBy('title')->get();
+        $permissions = Permission::orderBy('name')->pluck('name');
+
+        return Inertia::render('menus/Form', [
+            'menu' => $menu,
+            'parentMenus' => $menus,
+            'permissions' => $permissions,
+        ]);
+    }
+
+    public function update(Request $request, Menu $menu)
+    {
+        $data = $request->validate([
+            'title' => 'required|string',
+            'icon' => 'nullable|string',
+            'route' => 'nullable|string',
+            'parent_id' => 'nullable|exists:menus,id|not_in:' . $menu->id,
+            'order' => 'nullable|integer',
+            'permission_name' => 'nullable|string|exists:permissions,name',
+        ]);
+
+        if (!isset($data['order'])) {
+            $data['order'] = Menu::where('parent_id', $data['parent_id'] ?? null)->max('order') + 1;
+        }
+
+        $menu->update($data);
+
+        return redirect()->route('menus.index')->with('success', 'Menu berhasil diperbarui.');
+    }
+
+    public function destroy(Menu $menu)
+    {
+        $menu->children()->delete();
+        $menu->delete();
+
+        return redirect()->route('menus.index')->with('success', 'Menu berhasil dihapus.');
+    }
+
+    public function reorder(Request $request)
+    {
+        $menus = $request->input('menus');
+
+        $updateOrder = function ($items, $parentId = null) use (&$updateOrder) {
+            foreach ($items as $index => $item) {
+                Menu::where('id', $item['id'])->update([
+                    'order' => $index + 1,
+                    'parent_id' => $parentId,
+                ]);
+
+                if (!empty($item['children'])) {
+                    $updateOrder($item['children'], $item['id']);
+                }
+            }
+        };
+
+        $updateOrder($menus);
+
+        return redirect()->back()->with('success', 'Urutan menu berhasil disimpan.');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\NewsController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\News;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+use Illuminate\Support\Str;
+
+class NewsController extends Controller
+{
+    // =================================================================
+    //                            PUBLIC AREA
+    //  Method di bawah ini diakses oleh pengunjung umum (Front-end)
+    // =================================================================
+
+    /**
+     * Menampilkan daftar semua berita untuk halaman arsip/list publik.
+     * Menggunakan pagination agar halaman tidak terlalu berat.
+     */
+    public function publicIndex()
+    {
+        // Ambil data berita terbaru, 10 per halaman
+        $news = News::latest()->paginate(10);
+
+        return Inertia::render('Public/News/NewsList', [
+            // Transformasi data agar sesuai kebutuhan frontend
+            'news' => $news->map(function ($item) {
+                return [
+                    'title'     => $item->title,
+                    'slug'      => $item->slug,
+                    // Buat kutipan pendek (excerpt) max 150 karakter & hapus tag HTML
+                    'excerpt'   => Str::limit(strip_tags($item->content), 150),
+                    // Generate URL lengkap gambar jika ada, atau null
+                    'image_url' => $item->image ? asset('storage/' . $item->image) : null,
+                    'date'      => $item->created_at->format('d M Y'),
+                ];
+            }),
+            // Kirim data pagination manual karena kita memodifikasi collection 'news' di atas
+            'pagination' => [
+                'current_page' => $news->currentPage(),
+                'last_page'    => $news->lastPage(),
+            ]
+        ]);
+    }
+
+    /**
+     * Menampilkan 3 berita terbaru untuk halaman beranda (Landing Page).
+     */
+    public function landing()
+    {
+        // Ambil hanya 3 berita terbaru
+        $news = News::latest()->take(3)->get()->map(function ($item) {
+            return [
+                'title'     => $item->title,
+                'slug'      => $item->slug,
+                // Excerpt lebih pendek untuk landing page (100 char)
+                'excerpt'   => Str::limit(strip_tags($item->content), 100),
+                'image_url' => $item->image ? asset('storage/' . $item->image) : null,
+                'date'      => $item->created_at->format('d M Y'),
+            ];
+        });
+
+        return Inertia::render('welcome', [
+            'newsList' => $news
+        ]);
+    }
+
+    /**
+     * Menampilkan detail satu berita berdasarkan slug.
+     */
+    public function show($slug)
+    {
+        // Cari berita berdasarkan slug, jika tidak ketemu tampilkan 404 (firstOrFail)
+        $news = News::where('slug', $slug)->firstOrFail();
+
+        return Inertia::render('Public/News/NewsDetail', [
+            'article' => [
+                'title'     => $news->title,
+                'content'   => $news->content, // Content full (biasanya HTML dari Rich Text Editor)
+                'image_url' => $news->image ? asset('storage/' . $news->image) : null,
+                'date'      => $news->created_at->format('d F Y'),
+                'author'    => 'Admin', // Bisa diganti dinamis jika ada relasi user
+            ]
+        ]);
+    }
+
+
+    // =================================================================
+    //                             ADMIN AREA
+    //       Method di bawah ini untuk manajemen data (Back-end)
+    // =================================================================
+
+    /**
+     * Menampilkan tabel daftar berita di dashboard Admin.
+     */
+    public function index()
+    {
+        return Inertia::render('News/Index', [
+            'news' => News::latest()->get()->map(function ($item) {
+                return [
+                    'id'         => $item->id,
+                    'title'      => $item->title,
+                    'slug'       => $item->slug,
+                    'image_url'  => $item->image ? asset('storage/' . $item->image) : null,
+                    'created_at' => $item->created_at->format('d M Y'),
+                ];
+            })
+        ]);
+    }
+
+    /**
+     * Menampilkan form untuk membuat berita baru.
+     */
+    public function create()
+    {
+        return Inertia::render('News/Create');
+    }
+
+    /**
+     * Menyimpan data berita baru ke database.
+     */
+    public function store(Request $request)
+    {
+        // 1. Validasi Input
+        $request->validate([
+            'title'   => 'required|string',
+            'content' => 'required|string',
+            'image'   => 'nullable|image|max:2048', // Max 2MB
+        ]);
+
+        // 2. Handle Upload Gambar
+        $path = null;
+        if ($request->hasFile('image')) {
+            // Simpan ke folder storage/app/public/uploads/news
+            $path = $request->file('image')->store('uploads/news', 'public');
+        }
+
+        // 3. Simpan ke Database
+        News::create([
+            'title'   => $request->title,
+            // Buat slug unik: judul-di-slug + string random 5 karakter
+            'slug'    => Str::slug($request->title) . '-' . Str::random(5),
+            'content' => $request->content,
+            'image'   => $path,
+        ]);
+
+        return redirect()->route('News.index')->with('success', 'Berita berhasil dibuat.');
+    }
+
+    /**
+     * Menghapus berita dan file gambarnya.
+     */
+    public function destroy($id)
+    {
+        $news = News::findOrFail($id);
+
+        // Hapus file fisik gambar jika ada, agar storage tidak penuh sampah file
+        if ($news->image) {
+            Storage::disk('public')->delete($news->image);
+        }
+
+        // Hapus record dari database
+        $news->delete();
+
+        return back()->with('success', 'Berita berhasil dihapus.');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\PamiController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Car;
+use App\Models\Pami;
+use Inertia\Inertia;
+use App\Models\Standar;
+use App\Models\Departemen;
+use App\Models\PamiUpload;
+use App\Models\JadwalAudit; // <--- PENTING: Import Model JadwalAudit
+use Illuminate\Http\Request;
+use App\Models\JadwalAuditDetail;
+use Illuminate\Support\Facades\Auth;
+
+class PamiController extends Controller
+{
+    public function index(Request $request)
+    {
+        $user = Auth::user();
+
+        // 1. Role Aktif
+        $activeRole = session('active_role') ?? $user->getRoleNames()->first();
+        $currentRole = strtolower($activeRole);
+
+        $idJadwal = null;
+        $targetDeptId = null;
+        $namaDepartemen = '-';
+        $debugMessage = null;
+        $myDepartments = []; // Dropdown list
+
+        // --- LOGIKA FILTER TAHUN (BARU) ---
+        // 1. Ambil list tahun unik dari tabel jadwal_audits
+        $availableYears = JadwalAudit::select('tahun')
+                            ->distinct()
+                            ->orderBy('tahun', 'desc')
+                            ->pluck('tahun');
+
+        // 2. Tentukan tahun terpilih (dari request atau default ke tahun terbaru/sekarang)
+        $selectedYear = $request->input('tahun', $availableYears->first() ?? date('Y'));
+
+        // 2. LOGIKA PENCARIAN DATA
+
+        // --- LOGIKA AUDITOR ---
+        if ($currentRole === 'auditor') {
+            // Filter penugasan berdasarkan User DAN Tahun Jadwal
+            $assignments = JadwalAuditDetail::with(['departemen', 'jadwal'])
+                            ->where('user_id', $user->id)
+                            ->whereHas('jadwal', function($q) use ($selectedYear) {
+                                $q->where('tahun', $selectedYear);
+                            })
+                            ->latest('created_at')
+                            ->get();
+
+            if ($assignments->count() > 0) {
+                // Siapkan data untuk Dropdown (Hanya tugas di tahun terpilih)
+                $myDepartments = $assignments->map(fn($a) => [
+                    'id' => $a->id_departemen,
+                    'nama' => $a->departemen->nama_departemen ?? 'Departemen Hapus',
+                    'id_jadwal' => $a->id_jadwal
+                ]);
+
+                // Tentukan Tugas Mana yang Sedang Dilihat?
+                $requestedDeptId = $request->input('dept_id');
+                $activeTask = null;
+
+                if ($requestedDeptId) {
+                    $activeTask = $assignments->where('id_departemen', $requestedDeptId)->first();
+                }
+
+                // Jika tidak ada request atau request tidak valid, pakai tugas pertama
+                if (!$activeTask) {
+                    $activeTask = $assignments->first();
+                }
+
+                // Set Context Halaman
+                if ($activeTask) {
+                    $idJadwal = $activeTask->id_jadwal;
+                    $targetDeptId = $activeTask->id_departemen;
+                    $namaDepartemen = $activeTask->departemen->nama_departemen ?? '-';
+                }
+
+            } else {
+                $debugMessage = "Anda tidak memiliki jadwal audit pada tahun {$selectedYear}.";
+            }
+
+        // --- LOGIKA AUDITEE ---
+        } elseif ($currentRole === 'auditee') {
+            // Ambil SEMUA departemen milik user (User tetap memiliki departemen walau tahun berganti)
+            $allDepts = Departemen::where('user_id', $user->id)->get();
+
+            if ($allDepts->count() > 0) {
+                $myDepartments = $allDepts->map(fn($d) => [
+                    'id' => $d->id_departemen,
+                    'nama' => $d->nama_departemen
+                ]);
+
+                // Tentukan Departemen Aktif
+                $requestedDeptId = $request->input('dept_id');
+                $dept = null;
+
+                if ($requestedDeptId) {
+                    $dept = $allDepts->where('id_departemen', $requestedDeptId)->first();
+                }
+                if (!$dept) {
+                    $dept = $allDepts->first();
+                }
+
+                $targetDeptId = $dept->id_departemen;
+                $namaDepartemen = $dept->nama_departemen;
+
+                // Cari Jadwal untuk Departemen ini DI TAHUN TERPILIH
+                $jadwal = JadwalAuditDetail::where('id_departemen', $targetDeptId)
+                    ->whereHas('jadwal', function($q) use ($selectedYear) {
+                        $q->where('tahun', $selectedYear);
+                    })
+                    ->latest('created_at')
+                    ->first();
+
+                if ($jadwal) {
+                    $idJadwal = $jadwal->id_jadwal;
+                } else {
+                    $debugMessage = "Departemen '{$namaDepartemen}' tidak memiliki jadwal audit tahun {$selectedYear}.";
+                }
+            } else {
+                $debugMessage = "Akun Anda tidak terdaftar sebagai pemilik Departemen manapun.";
+            }
+
+        // --- LOGIKA SUPERADMIN ---
+        } elseif ($currentRole === 'superadmin') {
+            // Ambil sembarang tugas di tahun terpilih
+            $tugas = JadwalAuditDetail::with('departemen')
+                        ->whereHas('jadwal', function($q) use ($selectedYear) {
+                            $q->where('tahun', $selectedYear);
+                        })
+                        ->latest('created_at')
+                        ->first();
+
+            if ($tugas) {
+                $idJadwal = $tugas->id_jadwal;
+                $targetDeptId = $tugas->id_departemen;
+                $namaDepartemen = $tugas->departemen->nama_departemen ?? '-';
+            } else {
+                $debugMessage = "Belum ada data audit di tahun {$selectedYear}.";
+            }
+        }
+
+        // 3. QUERY DATA UTAMA
+        $pamiData = [];
+        if ($idJadwal && $targetDeptId) {
+            $pamiData = Standar::with(['kriteria', 'indikators' => function ($query) use ($idJadwal) {
+                $query->select('indikators.*')
+                    // Load Data PAMI (Skor, Catatan, Uploads)
+                    ->with(['pami' => function ($q) use ($idJadwal) {
+                        $q->where('id_jadwal', $idJadwal)->with('uploads');
+                    }])
+                    // Load Data CAR
+                    ->with(['car' => function ($q) use ($idJadwal) {
+                        $q->where('id_jadwal', $idJadwal);
+                    }]);
+            }])
+                ->where('id_departemen', $targetDeptId)
+                ->get();
+        }
+
+        return Inertia::render('pami/Index', [
+            'pamiData' => $pamiData,
+            'meta' => [
+                'role' => $currentRole,
+                'is_auditor' => ($currentRole === 'auditor' || $currentRole === 'superadmin'),
+                'is_auditee' => ($currentRole === 'auditee' || $currentRole === 'superadmin'),
+                'id_jadwal' => $idJadwal,
+                'departemen_id' => $targetDeptId,
+                'nama_departemen' => $namaDepartemen,
+                'has_schedule' => (bool) $idJadwal,
+                'my_departments' => $myDepartments,
+                'debug_message' => $debugMessage,
+                // --- KIRIM DATA TAHUN KE FRONTEND ---
+                'available_years' => $availableYears,
+                'selected_year' => $selectedYear
+            ]
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'id_jadwal' => 'required',
+            'id_indikator' => 'required',
+            // Validasi file: Maksimal 10MB
+            'bukti' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png|max:10240',
+        ]);
+
+        $user = Auth::user();
+
+        // Cek session dulu, jika kosong ambil dari role user asli di database
+        $roleName = $user->getRoleNames()->first();
+        $activeRole = session('active_role') ?? $roleName;
+        $activeRole = strtolower($activeRole); // Pastikan lowercase (auditor/auditee)
+
+        // 1. Cari atau Buat Record PAMI
+        $pami = Pami::firstOrCreate(
+            [
+                'id_jadwal' => $request->id_jadwal,
+                'id_indikator' => $request->id_indikator
+            ],
+            ['skor' => null]
+        );
+
+        // 2. Logic Auditor: Simpan Skor & Catatan
+        if ($activeRole === 'auditor' || $activeRole === 'superadmin') {
+            $fieldsToUpdate = [];
+
+            if ($request->has('skor')) $fieldsToUpdate['skor'] = $request->skor;
+            if ($request->has('catatan_auditor')) $fieldsToUpdate['catatan_auditor'] = $request->catatan_auditor;
+
+            if (!empty($fieldsToUpdate)) {
+                $pami->update($fieldsToUpdate);
+            }
+        }
+
+        // 3. Logic Auditee: Upload Bukti
+        if ($activeRole === 'auditee' || $activeRole === 'superadmin') {
+            if ($request->hasFile('bukti')) {
+                try {
+                    $file = $request->file('bukti');
+
+                    // Simpan ke storage/app/public/bukti_audit
+                    $path = $file->store('bukti_audit', 'public');
+
+                    if (!$path) {
+                        throw new \Exception("Gagal menyimpan file ke storage.");
+                    }
+
+                    PamiUpload::create([
+                        'id_pami' => $pami->id,
+                        'file_path' => $path,
+                        'file_name' => $file->getClientOriginalName(),
+                        'uploaded_by_role' => $activeRole
+                    ]);
+                } catch (\Exception $e) {
+                    return redirect()->back()->withErrors(['bukti' => 'Error Upload: ' . $e->getMessage()]);
+                }
+            }
+        }
+
+        return redirect()->back()->with('message', 'Data berhasil disimpan');
+    }
+
+    public function storeCar(Request $request)
+    {
+        $request->validate([
+            'id_jadwal' => 'required',
+            'id_indikator' => 'required',
+        ]);
+
+        $role = session('active_role') ?? Auth::user()->getRoleNames()->first();
+        $role = strtolower($role);
+
+        // Cek apakah CAR sudah ada?
+        $existingCar = Car::where('id_jadwal', $request->id_jadwal)
+                          ->where('id_indikator', $request->id_indikator)
+                          ->first();
+
+        $dataToUpdate = [];
+        $status = $existingCar ? $existingCar->status : 'OPEN';
+
+        // --- LOGIC AUDITOR (Buat CAR / Review) ---
+        if ($role === 'auditor' || $role === 'superadmin') {
+
+            // A. Update Data Temuan (Jika dikirim)
+            if ($request->has('ketidaksesuaian')) $dataToUpdate['ketidaksesuaian'] = $request->ketidaksesuaian;
+            if ($request->has('temuan')) $dataToUpdate['temuan'] = $request->temuan;
+            if ($request->has('tanggal_pemenuhan')) $dataToUpdate['tanggal_pemenuhan'] = $request->tanggal_pemenuhan;
+
+            // B. Verifikasi Status (Closed / Revisi)
+            if ($request->has('verifikasi_status')) {
+                $status = $request->verifikasi_status; // CLOSED / REVISI
+            } else {
+                if (!$existingCar) {
+                    $status = 'OPEN';
+                }
+            }
+        }
+
+        // --- LOGIC AUDITEE (Isi Tindak Lanjut) ---
+        if ($role === 'auditee' || $role === 'superadmin') {
+
+            if ($request->has('akar_masalah')) $dataToUpdate['akar_masalah'] = $request->akar_masalah;
+            if ($request->has('tindakan_koreksi')) $dataToUpdate['tindakan_koreksi'] = $request->tindakan_koreksi;
+
+            if ($request->has('akar_masalah') || $request->has('tindakan_koreksi')) {
+                if ($status !== 'CLOSED') {
+                    $status = 'SUBMITTED';
+                }
+            }
+        }
+
+        $dataToUpdate['status'] = $status;
+
+        Car::updateOrCreate(
+            [
+                'id_jadwal' => $request->id_jadwal,
+                'id_indikator' => $request->id_indikator
+            ],
+            $dataToUpdate
+        );
+
+        return redirect()->back()->with('message', 'Data CAR berhasil diperbarui');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\PermissionController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Spatie\Permission\Models\Permission;
+
+class PermissionController extends Controller
+{
+    public function index(Request $request)
+    {
+        $query = Permission::query();
+
+        if ($request->filled('group')) {
+            $query->where('group', $request->group);
+        }
+
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%' . $request->search . '%');
+        }
+
+        $permissions = $query
+            ->orderBy('group')
+            ->orderBy('name')
+            ->paginate(10)
+            ->withQueryString();
+
+        $groups = Permission::select('group')->distinct()->pluck('group')->filter()->values();
+
+        return Inertia::render('permissions/Index', [
+            'permissions' => $permissions,
+            'groups' => $groups,
+            'filters' => $request->only('group', 'search'),
+        ]);
+    }
+
+    public function create()
+    {
+        $groups = Permission::select('group')->distinct()->pluck('group')->filter()->values();
+
+        return Inertia::render('permissions/Form', [
+            'groups' => $groups,
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:255|unique:permissions,name',
+            'group' => 'nullable|string|max:255',
+        ]);
+
+        Permission::create($data);
+
+        return redirect()->route('permissions.index')->with('success', 'Permission berhasil dibuat.');
+    }
+
+    public function edit(Permission $permission)
+    {
+        $groups = Permission::select('group')->distinct()->pluck('group')->filter()->values();
+
+        return Inertia::render('permissions/Form', [
+            'permission' => $permission,
+            'groups' => $groups,
+        ]);
+    }
+
+    public function update(Request $request, Permission $permission)
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:255|unique:permissions,name,' . $permission->id,
+            'group' => 'nullable|string|max:255',
+        ]);
+
+        $permission->update($data);
+
+        return redirect()->route('permissions.index')->with('success', 'Permission berhasil diperbarui.');
+    }
+
+    public function destroy(Permission $permission)
+    {
+        $permission->delete();
+
+        return redirect()->route('permissions.index')->with('success', 'Permission berhasil dihapus.');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\PtkController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Inertia\Inertia;
+
+class PTKController extends Controller
+{
+    public function index()
+    {
+        // Render ke halaman React bernama "Pencatatan Koreksi Lanjut/Index"
+        return Inertia::render('ptk/Index');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\RoleController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Permission;
+
+class RoleController extends Controller
+{
+    /**
+     * Menampilkan daftar role beserta permission yang dimilikinya.
+     * Digunakan untuk halaman manajemen Role & Permission.
+     */
+    public function index()
+    {
+        // Eager load 'permissions' untuk mencegah N+1 query problem
+        $roles = Role::with('permissions')->get();
+
+        // Mengambil semua permission dan mengelompokkannya berdasarkan kolom 'group'.
+        // Ini berguna di Frontend agar checkbox permission lebih rapi (misal: Group 'News', Group 'User').
+        $permissions = Permission::all()->groupBy('group');
+
+        return Inertia::render('roles/Index', [
+            'roles' => $roles,
+            'groupedPermissions' => $permissions,
+        ]);
+    }
+
+    /**
+     * Menyimpan Role baru ke database dan menautkan permission-nya.
+     */
+    public function store(Request $request)
+    {
+        // Validasi: Nama role harus unik di tabel 'roles'
+        $data = $request->validate([
+            'name' => 'required|unique:roles,name',
+            'permissions' => 'array', // Array berisi ID permission atau nama permission
+        ]);
+
+        // 1. Buat Role baru
+        $role = Role::create(['name' => $data['name']]);
+
+        // 2. Sync Permissions (Fitur Spatie)
+        // Otomatis menghapus permission lama (jika ada) dan memasukkan yang baru.
+        // Menggunakan '?? []' untuk menangani jika user tidak mencentang permission satupun.
+        $role->syncPermissions($data['permissions'] ?? []);
+
+        return redirect()->route('roles.index')->with('success', 'Role berhasil dibuat');
+    }
+
+    /**
+     * Menampilkan form untuk membuat role baru.
+     */
+    public function create()
+    {
+        // Kirim data permission yang sudah dikelompokkan untuk ditampilkan sebagai checkbox
+        $permissions = Permission::all()->groupBy('group');
+
+        return Inertia::render('roles/Form', [
+            'groupedPermissions' => $permissions,
+        ]);
+    }
+
+    /**
+     * Menampilkan form edit untuk role tertentu.
+     */
+    public function edit(Role $role)
+    {
+        $permissions = Permission::all()->groupBy('group');
+
+        // Load permission yang saat ini dimiliki oleh role tersebut
+        // agar checkbox di frontend bisa otomatis tercentang.
+        $role->load('permissions');
+
+        return Inertia::render('roles/Form', [
+            'role' => $role,
+            'groupedPermissions' => $permissions,
+        ]);
+    }
+
+    /**
+     * Memperbarui nama role dan permission-nya.
+     */
+    public function update(Request $request, Role $role)
+    {
+        $data = $request->validate([
+            // Validasi Unik Pengecualian:
+            // Cek unik nama role, TAPI abaikan (ignore) role yang sedang diedit saat ini ($role->id).
+            'name' => 'required|unique:roles,name,' . $role->id,
+            'permissions' => 'array',
+        ]);
+
+        // 1. Update nama role
+        $role->update(['name' => $data['name']]);
+
+        // 2. Sinkronisasi ulang permission
+        $role->syncPermissions($data['permissions'] ?? []);
+
+        return redirect()->route('roles.index')->with('success', 'Role berhasil diperbarui');
+    }
+
+    /**
+     * Menghapus role dari database.
+     */
+    public function destroy(Role $role)
+    {
+        // Menghapus role akan otomatis menghapus relasi di tabel pivot (model_has_roles)
+        $role->delete();
+        return redirect()->route('roles.index')->with('success', 'Role berhasil dihapus');
+    }
+
+    // ==========================================================
+    // LOGIKA SWITCH ROLE (MULTI-ROLE USER)
+    // Fitur ini memungkinkan user dengan banyak role untuk
+    // memilih role mana yang sedang "Aktif" di sesi saat ini.
+    // ==========================================================
+
+    /**
+     * Mengubah role aktif user dalam sesi.
+     */
+    public function switchRole(Request $request)
+    {
+        $request->validate([
+            'role' => 'required|string',
+        ]);
+
+        $user = Auth::user();
+        $newRole = $request->input('role');
+
+        // 🛡️ SECURITY CHECK PENTING:
+        // Kita harus memastikan user BENAR-BENAR memiliki role yang diminta di database.
+        // Jangan hanya percaya input dari frontend, karena request bisa dimanipulasi.
+        if (! $user->hasRole($newRole)) {
+            abort(403, 'Unauthorized action: Anda tidak memiliki akses ke role ini.');
+        }
+
+        // Simpan role yang dipilih ke dalam SESSION.
+        // Middleware ('HandleInertiaRequests' atau Custom Middleware) nantinya akan membaca
+        // session ini untuk menentukan menu apa yang tampil atau izin apa yang berlaku.
+        session(['active_role' => $newRole]);
+
+        return back()->with('success', "Berhasil beralih ke peran: " . ucfirst($newRole));
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\RtlController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Inertia\Inertia;
+
+class RtlController extends Controller
+{
+    public function index()
+    {
+        // Render ke halaman React bernama "Rencana Tindak Lanjut/Index"
+        return Inertia::render('rtl/Index');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\SettingAppController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Inertia\Inertia;
+use App\Models\SettingApp;
+use Illuminate\Http\Request;
+
+class SettingAppController extends Controller
+{
+    public function edit()
+    {
+        $setting = SettingApp::first();
+        return Inertia::render('settingapp/Form', ['setting' => $setting]);
+    }
+
+    public function update(Request $request)
+    {
+        $data = $request->validate([
+            'nama_app'   => 'required|string|max:255',
+            'deskripsi'  => 'nullable|string',
+            'logo'       => 'nullable|file|image|max:2048',
+            'favicon'    => 'nullable|file|image|max:1024',
+            'warna'      => 'nullable|string|max:20',
+            'seo'        => 'nullable|array',
+        ]);
+
+        $setting = SettingApp::firstOrNew();
+
+        if ($request->hasFile('logo')) {
+            $data['logo'] = $request->file('logo')->store('logo', 'public');
+        } else {
+            unset($data['logo']);
+        }
+
+        if ($request->hasFile('favicon')) {
+            $data['favicon'] = $request->file('favicon')->store('favicon', 'public');
+        } else {
+            unset($data['favicon']);
+        }
+
+        $setting->fill($data)->save();
+
+        return redirect()->back()->with('success', 'Pengaturan berhasil disimpan.');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\StandarController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Standar;
+use App\Models\Lingkup;
+use App\Models\Kriteria;
+use App\Models\Departemen;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+
+class StandarController extends Controller
+{
+    /**
+     * Menampilkan daftar Standar Audit beserta relasinya.
+     */
+    public function index(Request $request)
+    {
+        // 1. Eager Loading & Nested Relationship
+        // 'with()' digunakan untuk mengatasi masalah N+1 Query.
+        // - 'kriteria.lingkup': Kita meload 'kriteria', lalu dari kriteria itu kita load 'lingkup'.
+        //   Ini penting agar di tabel frontend kita bisa menampilkan hierarki: Standar -> Kriteria -> Lingkup.
+        // - 'departemen': Meload data departemen terkait.
+        $query = Standar::with(['kriteria.lingkup', 'departemen']);
+
+        // 2. Fitur Pencarian
+        // Jika ada parameter 'search' dari frontend, filter berdasarkan pernyataan standar.
+        if ($request->has('search')) {
+            $query->where('pernyataan_standar', 'like', '%' . $request->search . '%');
+        }
+
+        // Ambil data dan urutkan berdasarkan Primary Key custom (id_standar)
+        $standars = $query->orderBy('id_standar', 'desc')->get();
+
+        // 3. Data Master untuk Dropdown Frontend
+        // Frontend membutuhkan list Kriteria, Lingkup, dan Departemen untuk mengisi pilihan pada form (Select/Option).
+        $kriterias = Kriteria::with('lingkup')->get(); // Load lingkup agar dropdown kriteria bisa dikelompokkan
+        $lingkups = Lingkup::all();
+        $departemens = Departemen::all();
+
+        return Inertia::render('standar/Index', [
+            'data' => $standars,
+            'masterData' => [
+                'lingkups' => $lingkups,
+                'kriterias' => $kriterias,
+                'departemens' => $departemens,
+            ],
+            // Mengembalikan filter search agar input search di frontend tidak hilang setelah reload
+            'filters' => $request->only(['search']),
+        ]);
+    }
+
+    /**
+     * Menyimpan Standar Audit baru.
+     */
+    public function store(Request $request)
+    {
+        // 1. Validasi Input
+        $request->validate([
+            'namaStandar' => 'required|string',
+            // 'exists' memastikan ID yang dikirim benar-benar ada di tabel referensinya
+            'id_kriteria' => 'required|exists:kriterias,id_kriteria',
+            'id_departemen' => 'nullable|exists:departemens,id_departemen',
+        ]);
+
+        // 2. Simpan ke Database
+        // Perhatikan mapping: Input 'namaStandar' (dari React) disimpan ke kolom 'pernyataan_standar' (Database).
+        Standar::create([
+            'pernyataan_standar' => $request->namaStandar,
+            'id_kriteria' => $request->id_kriteria,
+            'id_departemen' => $request->id_departemen,
+        ]);
+
+        return redirect()->back()->with('message', 'Standar berhasil ditambahkan');
+    }
+
+    /**
+     * Memperbarui data Standar Audit yang sudah ada.
+     */
+    public function update(Request $request, $id)
+    {
+        // 1. Validasi ulang input saat edit
+        $request->validate([
+            'namaStandar' => 'required|string',
+            'id_kriteria' => 'required|exists:kriterias,id_kriteria',
+            'id_departemen' => 'nullable|exists:departemens,id_departemen',
+        ]);
+
+        // 2. Cari Data
+        // Menggunakan findOrFail agar otomatis return 404 jika ID tidak ditemukan
+        $standar = Standar::findOrFail($id);
+
+        // 3. Update Data
+        $standar->update([
+            'pernyataan_standar' => $request->namaStandar,
+            'id_kriteria' => $request->id_kriteria,
+            'id_departemen' => $request->id_departemen,
+        ]);
+
+        return redirect()->back()->with('message', 'Standar berhasil diperbarui');
+    }
+
+    /**
+     * Menghapus Standar Audit.
+     */
+    public function destroy($id)
+    {
+        $standar = Standar::findOrFail($id);
+        $standar->delete();
+
+        return redirect()->back()->with('message', 'Standar berhasil dihapus');
+    }
+}
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\UserController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use App\Models\Departemen;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Hash;
+use Inertia\Inertia;
+use Spatie\Permission\Models\Role;
+
+class UserController extends Controller
+{
+    public function index()
+    {
+        // Ubah with('roles') menjadi array ['roles', 'departemens']
+        $users = User::with(['roles', 'departemens'])
+            ->latest()
+            ->paginate(10);
+
+        return Inertia::render('users/Index', [
+            'users' => $users,
+        ]);
+    }
+    public function create()
+    {
+        $roles = Role::all();
+        // Ambil semua departemen untuk pilihan dropdown/checkbox
+        $departemens = Departemen::select('id_departemen', 'nama_departemen')->get();
+
+        return Inertia::render('users/Form', [
+            'roles' => $roles,
+            'departemens' => $departemens, // <--- Kirim ke frontend
+        ]);
+    }
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name'     => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:6'],
+            'roles'    => ['required', 'array', 'min:1'],
+            'roles.*'  => ['required', Rule::exists('roles', 'name')],
+            // Validasi input departemen (array ID)
+            'departemens'   => ['nullable', 'array'],
+            'departemens.*' => ['exists:departemens,id_departemen'],
+        ]);
+
+        $user = User::create([
+            'name'     => $validated['name'],
+            'email'    => $validated['email'],
+            'password' => Hash::make($validated['password']),
+        ]);
+
+        $user->assignRole($validated['roles']);
+
+        // Update departemen yang dipilih agar user_id-nya mengarah ke user baru ini
+        if (!empty($validated['departemens'])) {
+            Departemen::whereIn('id_departemen', $validated['departemens'])
+                ->update(['user_id' => $user->id]);
+        }
+
+        return redirect()->route('users.index')->with('success', 'User berhasil dibuat.');
+    }
+
+    public function edit(User $user)
+    {
+        $roles = Role::all();
+        $departemens = Departemen::select('id_departemen', 'nama_departemen')->get();
+
+        return Inertia::render('users/Form', [
+            'user'         => $user->only(['id', 'name', 'email']),
+            'roles'        => $roles,
+            'currentRoles' => $user->roles->pluck('name')->toArray(),
+            'departemens'  => $departemens, // <--- Kirim list semua departemen
+            // Kirim ID departemen yang saat ini dimiliki user ini
+            'currentDepartemens' => $user->departemens()->pluck('id_departemen')->toArray(),
+        ]);
+    }
+
+    public function update(Request $request, User $user)
+    {
+        $validated = $request->validate([
+            'name'     => ['required', 'string', 'max:255'],
+            'email'    => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'password' => ['nullable', 'string', 'min:6'],
+            'roles'    => ['required', 'array', 'min:1'],
+            'roles.*'  => ['required', Rule::exists('roles', 'name')],
+            'departemens'   => ['nullable', 'array'],
+            'departemens.*' => ['exists:departemens,id_departemen'],
+        ]);
+
+        $user->update([
+            'name'     => $validated['name'],
+            'email'    => $validated['email'],
+            'password' => $validated['password']
+                ? Hash::make($validated['password'])
+                : $user->password,
+        ]);
+
+        $user->syncRoles($validated['roles']);
+
+        /**
+         * Logika Update Departemen:
+         * 1. Lepaskan (set null) departemen lama yang dulu milik user ini tapi sekarang tidak dipilih.
+         * 2. Set user_id ke user ini untuk departemen yang baru dipilih.
+         */
+
+        // Lepaskan semua departemen yang sebelumnya milik user ini
+        Departemen::where('user_id', $user->id)->update(['user_id' => null]);
+
+        // Pasang departemen baru yang dipilih
+        if (!empty($validated['departemens'])) {
+            Departemen::whereIn('id_departemen', $validated['departemens'])
+                ->update(['user_id' => $user->id]);
+        }
+
+        return redirect()->route('users.index')->with('success', 'User berhasil diperbarui.');
+    }
+
+    public function destroy(User $user)
+    {
+        $user->delete();
+
+        return redirect()->route('users.index')->with('success', 'User berhasil dihapus.');
+    }
+
+    public function resetPassword(User $user)
+    {
+        $user->update([
+            'password' => Hash::make('ResetPasswordNya'),
+        ]);
+
+        return redirect()->back()->with('success', 'Password berhasil direset ke default.');
+    }
+}
+
+C:\laragon\www\spmi.asaindo\app\Http\Controllers\UserFileController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Illuminate\Support\Facades\Auth;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
+class UserFileController extends Controller
+{
+    public function index(Request $request)
+    {
+        $user = $request->user();
+        $folderId = $request->input('folder_id');
+
+        $folders = $user->mediaFolders()->orderBy('name')->get();
+
+        // ✅ Cek folder aktif
+        $currentFolder = $folderId ? $user->mediaFolders()->find($folderId) : null;
+
+        if ($folderId && !$currentFolder) {
+            // 🛑 Jika folder tidak ada, redirect ke root
+            return redirect('/files');
+        }
+
+        $files = $user
+            ->media()
+            ->where('collection_name', 'files')
+            ->when($folderId, function ($query) use ($folderId) {
+                $query->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(custom_properties, '$.folder_id')) = ?", [(string)$folderId]);
+            }, function ($query) {
+                $query->where(function ($q) {
+                    $q->whereNull('custom_properties->folder_id')
+                        ->orWhereRaw("JSON_EXTRACT(custom_properties, '$.folder_id') IS NULL");
+                });
+            })
+            ->get();
+
+        return Inertia::render('files/Index', [
+            'folders' => $folders,
+            'currentFolderId' => $folderId,
+            'currentFolder' => $currentFolder,
+            'files' => $files->map(fn($media) => [
+                'id' => $media->id,
+                'name' => $media->name,
+                'size' => $media->humanReadableSize,
+                'mime_type' => $media->mime_type,
+                'url' => $media->getFullUrl(),
+                'created_at' => $media->created_at->diffForHumans(),
+            ]),
+        ]);
+    }
+
+public function store(Request $request)
+    {
+        $request->validate([
+            'files.*' => 'required|file|max:10240', // Max 10MB per file
+            'folder_id' => 'nullable|exists:media_folders,id',
+        ]);
+
+        $user = $request->user();
+        $folderId = $request->input('folder_id');
+
+        if ($request->hasFile('files')) {
+            foreach ($request->file('files') as $file) {
+                $media = $user->addMedia($file)
+                    ->toMediaCollection('files');
+
+                // Simpan relasi folder di custom properties
+                if ($folderId) {
+                    $media->setCustomProperty('folder_id', $folderId);
+                    $media->save();
+                }
+            }
+        }
+
+        return back()->with('success', 'File berhasil diupload.');
+    }
+
+    /**
+     * Hapus file.
+     * (Method inilah yang hilang sebelumnya)
+     */
+    public function destroy($id)
+    {
+        // Cari media berdasarkan ID
+        $media = Media::findOrFail($id);
+
+        // 🛡️ SECURITY CHECK
+        // Hanya izinkan hapus jika:
+        // 1. User adalah Superadmin (berdasarkan session active_role atau role asli)
+        // 2. ATAU User adalah pemilik file (model_id == user_id)
+
+        $user = Auth::user();
+        $isActiveSuperAdmin = session('active_role') === 'superadmin'; // Atau logic role Anda
+        $isOwner = $media->model_id === $user->id && $media->model_type === get_class($user);
+
+        if (!$isActiveSuperAdmin && !$isOwner) {
+            abort(403, 'Anda tidak berhak menghapus file ini.');
+        }
+
+        $media->delete();
+
+        return back()->with('success', 'File berhasil dihapus.');
+    }
+}
