@@ -7,7 +7,7 @@ import type { PageProps as InertiaPageProps } from "@inertiajs/core";
 import { Shield } from "lucide-react";
 
 // --- IMPORT MODAL BARU ---
-import RoleSelectionModal from "@/Components/RoleSelectionModal";
+import RoleSelectionModal from "@/components/RoleSelectionModal";
 
 // ==============================
 // 1. PAGE PROPS TYPE

@@ -5,3 +5,9 @@
 - penilaian hanya ada jadwal yang belum dinilai
 - popup sumpan nilai akan mulcar apabila nilai kurang dan apabila melampai akan sempan saja dan pindah ke permohonan atau pencatatan apabila melampaui
 - membuat file pada dokumen menjadi public tapi hanya yang punya alamat link yang dapat melihat
+
+
+git status
+git add .
+git commit -m "Update sidebar"
+git push origin main

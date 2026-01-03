@@ -6,28 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     @php
-        $setting = $page['props']['setting'] ?? null;
+        $setting = $page['props']['setting'] ?? [];
         $appName = $setting['nama_app'] ?? config('app.name', 'Laravel');
         $favicon = $setting['favicon'] ?? null;
     @endphp
 
-<title inertia>{{ $setting['nama_app'] ?? 'Sistem Penjamin Mutu' }}</title>
+    <title inertia>{{ $appName }}</title>
 
+    {{-- FAVICON --}}
+    @if (!empty($favicon))
+        <link rel="icon" type="image/png" href="{{ asset('storage/' . $favicon) }}">
+    @else
+        <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    @endif
 
+    {{-- FONT --}}
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />
 
-    @php
-        $favicon = $page['props']->setting->favicon ?? null;
-    @endphp
-
-    @if (!empty($favicon))
-        <link rel="icon" href="{{ asset('storage/' . $favicon) }}" type="image/png">
-    @else
-        <link rel="icon" href="/favicon.ico" type="image/x-icon">
-    @endif
-
-
+    {{-- INERTIA --}}
     @routes
     @viteReactRefresh
     @vite(['resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
