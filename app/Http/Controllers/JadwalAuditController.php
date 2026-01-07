@@ -2,18 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\JadwalAudit;
-use App\Models\JadwalAuditDetail;
-use App\Models\Departemen;
 use App\Models\User;
-// IMPORT MODEL HIERARKI (Wajib ada agar modal detail berjalan)
+use Inertia\Inertia;
 use App\Models\Lingkup;
-use App\Models\Kriteria;
 use App\Models\Standar;
+// IMPORT MODEL HIERARKI (Wajib ada agar modal detail berjalan)
+use App\Models\Kriteria;
+use App\Models\Departemen;
+use App\Models\JadwalAudit;
 
 use Illuminate\Http\Request;
-use Inertia\Inertia;
+use App\Models\JadwalAuditDetail;
 use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf as DomPdf;
 
 class JadwalAuditController extends Controller
 {
@@ -28,7 +29,7 @@ class JadwalAuditController extends Controller
         // Filter Pencarian
         if ($request->has('search')) {
             $query->where('tahun', 'like', '%' . $request->search . '%')
-                  ->orWhere('no_sk', 'like', '%' . $request->search . '%');
+                ->orWhere('no_sk', 'like', '%' . $request->search . '%');
         }
 
         // 2. Ambil Data Master Hierarki (Khusus untuk Modal Detail)
@@ -135,5 +136,22 @@ class JadwalAuditController extends Controller
     {
         JadwalAudit::findOrFail($id)->delete();
         return redirect()->back()->with('message', 'Data dihapus');
+    }
+    public function exportChecklist($id)
+    {
+        // 1. Ambil data Jadwal beserta Detail-nya
+        $jadwal = JadwalAudit::with(['details.auditor', 'details.departemen'])->findOrFail($id);
+
+        // 2. Ambil semua Standar + Indikator + Kriteria untuk dipassing ke View
+        // Kita ambil semua dulu, nanti di Blade difilter per departemen biar hemat query
+        $standars = Standar::with(['indikators', 'kriteria'])
+            ->get();
+
+        // 3. Generate PDF
+        $pdf = DomPdf::loadView('exports.checklist_audit', compact('jadwal', 'standars'));
+
+        $pdf->setPaper('a4', 'portrait');
+
+        return $pdf->stream('Checklist-Audit.pdf');
     }
 }

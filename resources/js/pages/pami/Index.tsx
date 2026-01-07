@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react'; // Tambahkan useMemo
 import { Head, router, useForm } from '@inertiajs/react';
 import AppLayout from "@/layouts/app-layout";
 import { Button } from "@/components/ui/button";
@@ -55,18 +55,21 @@ interface PamiUpload {
     mime_type?: string;
     size?: number;
     created_at: string;
+    id_pami?: number;
 }
 
 interface Pami {
     id: number;
     skor: string | null;
     uploads: PamiUpload[];
+    jadwal?: { tahun: string | number };
 }
 
 interface Indikator {
     id_indikator: number;
     pernyataan_indikator: string;
     pami: Pami | null;
+    pamis?: Pami[]; // Riwayat Pami
     car: CarData | null;
 }
 
@@ -95,7 +98,7 @@ interface Props {
     };
 }
 
-// --- HELPER ICON FILE (Dari File Manager) ---
+// --- HELPER ICON FILE ---
 function getFileIcon(fileName: string | null, className = "w-6 h-6") {
     if (!fileName) return <LinkIcon className={`${className} text-indigo-500`} />;
 
@@ -117,8 +120,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
     // --- STATES MODALS ---
     const [selectedCarIndikator, setSelectedCarIndikator] = useState<Indikator | null>(null);
     const [isCarModalOpen, setIsCarModalOpen] = useState(false);
-
-
 
     // 2. State Konfirmasi Nilai
     const [scoreConfirm, setScoreConfirm] = useState<{ score: string, id_indikator: number } | null>(null);
@@ -144,7 +145,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
         });
     };
 
-
     // ➕ HANDLE PILIH SKOR
     const handleScoreClick = (score: string, indikator: Indikator) => {
         const isNegative = NEGATIVE_SCORES.includes(score);
@@ -165,8 +165,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
             id_indikator: indikator.id_indikator
         });
     };
-
-
 
     // B. Trigger Proses Nilai (Setelah Konfirmasi)
     const executeScoring = () => {
@@ -209,12 +207,10 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
         });
     };
 
-
     const handleDeleteFile = (fileId: number) => {
         if (!confirm("Hapus file bukti ini?")) return;
         setDeletingFileId(fileId);
 
-        // PERBAIKAN: Ganti 'file.destroy' menjadi 'pami.file.delete'
         router.delete(route('pami.file.delete', fileId), {
             preserveScroll: true,
             onSuccess: () => setDeletingFileId(null),
@@ -231,9 +227,8 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
         setIsCarModalOpen(true);
     };
 
-    // --- PREVIEW RENDERER (Diadaptasi dari File Manager) ---
+    // --- PREVIEW RENDERER ---
     const renderPreviewContent = (file: PamiUpload) => {
-        // A. Jika hanya Keterangan / Link (Tanpa File Fisik)
         if (!file.file_path) {
             return (
                 <div className="flex flex-col items-center justify-center h-[50vh] text-center p-6">
@@ -251,29 +246,21 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
             )
         }
 
-        // B. Jika Ada File Fisik -> Gunakan Route pami.download
-        // PENTING: Gunakan route() agar melewati Controller (fix error 403)
         const url = route('pami.download', file.id);
-
         const ext = file.file_name?.split('.').pop()?.toLowerCase() || '';
 
-        // 1. Gambar
         if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext))
             return <img src={url} alt={file.file_name || 'File'} className="max-w-full max-h-[70vh] object-contain mx-auto rounded-md shadow-sm" />;
 
-        // 2. PDF
         if (['pdf'].includes(ext))
             return <iframe src={url} className="w-full h-[70vh] rounded-md border" title="PDF Preview"></iframe>;
 
-        // 3. Video
         if (['mp4', 'mov', 'avi'].includes(ext))
             return <video controls src={url} className="w-full max-h-[70vh] rounded-md" />;
 
-        // 4. Audio
         if (['mp3', 'wav'].includes(ext))
             return <audio controls src={url} className="w-full mt-10" />;
 
-        // 5. File Lain (Word, Excel, dll) -> Tampilkan Tombol Download
         return (
             <div className="flex flex-col items-center justify-center h-[50vh] text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
                 <FileSpreadsheet className="w-16 h-16 text-gray-400 mb-4" />
@@ -343,10 +330,12 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
         );
     };
 
-    // --- COMPONENT: DOCUMENT ITEM ---
-    // Digunakan oleh Auditee dan Auditor untuk menampilkan file
-    // --- COMPONENT: DOCUMENT ITEM ---
-    const FileItem = ({ file, canDelete }: { file: PamiUpload, canDelete: boolean }) => (
+    // =========================================================
+    // ↓↓↓ KOMPONEN YANG SEBELUMNYA HILANG (INSERT DISINI) ↓↓↓
+    // =========================================================
+
+    // 1. KOMPONEN ITEM FILE (HELPER)
+    const FileItem = ({ file, canDelete }: { file: any, canDelete: boolean }) => (
         <div className="group relative pl-3 border-l-2 border-indigo-500 bg-white hover:bg-indigo-50/50 p-2 rounded-r-md transition-colors border shadow-sm">
             <div className="flex justify-between items-start">
                 <div className="overflow-hidden cursor-pointer w-full" onClick={() => setPreviewFile(file)}>
@@ -354,6 +343,12 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                         <span className="text-[10px] text-gray-400 font-mono">
                             {formatDate(file.created_at)}
                         </span>
+                        {/* Jika file ini dari tahun beda, tampilkan badge tahun */}
+                        {file.pami_year && file.pami_year != meta.selected_year && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 font-bold">
+                                {file.pami_year}
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-start gap-2">
                         {getFileIcon(file.file_name, "w-4 h-4 shrink-0 mt-0.5")}
@@ -396,45 +391,58 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
         </div>
     );
 
-    // --- RENDERER KHUSUS AUDITEE ---
-    const RenderDokumenAuditee = ({ indikator }: { indikator: Indikator }) => {
-        const uploads = indikator.pami?.uploads || [];
-        const sortedUploads = [...uploads].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-        // State Modal Upload
+    // 2. RENDERER KHUSUS AUDITEE
+    const RenderDokumenAuditee = ({ indikator }: { indikator: any }) => {
         const [isOpen, setIsOpen] = useState(false);
-
-        // Form Upload menggunakan Inertia useForm
-        const { data, setData, post, processing, reset, errors } = useForm({
+        const { data, setData, post, processing, errors, reset } = useForm({
             id_jadwal: meta.id_jadwal,
             id_indikator: indikator.id_indikator,
             bukti: null as File | null,
             keterangan: '',
         });
 
-        const handleSubmitBukti = (e: React.FormEvent) => {
-            e.preventDefault();
-            // Validasi Sederhana
-            if (!data.bukti && !data.keterangan) {
-                return alert("Mohon isi File ATAU Keterangan/Link.");
+        // GABUNGKAN SEMUA FILE (TAHUN INI + RIWAYAT)
+        const allUploads = useMemo(() => {
+            let list: any[] = [];
+
+            // File Tahun Ini
+            if (indikator.pami?.uploads) {
+                list = [...indikator.pami.uploads.map((u: any) => ({ ...u, pami_year: meta.selected_year }))];
             }
 
+            // File Riwayat (Tahun Lalu)
+            if (indikator.pamis) {
+                indikator.pamis.forEach((p: any) => {
+                    // Jangan masukkan pami tahun ini lagi (agar tidak duplikat)
+                    if (p.id !== indikator.pami?.id && p.uploads) {
+                        list = [...list, ...p.uploads.map((u: any) => ({ ...u, pami_year: p.jadwal?.tahun }))];
+                    }
+                });
+            }
+            return list;
+        }, [indikator]);
+
+        // SORTING (Terbaru di atas)
+        const sortedUploads = [...allUploads].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        const handleSubmitBukti = (e: React.FormEvent) => {
+            e.preventDefault();
             post(route('pami.store'), {
                 onSuccess: () => {
-                    setIsOpen(false);
                     reset();
+                    setIsOpen(false);
                 },
-                preserveScroll: true,
-                forceFormData: true,
+                onError: () => alert("Gagal menyimpan bukti"),
             });
         };
 
         return (
             <div className="flex flex-col gap-3">
-                {/* Tombol Buka Modal Upload */}
                 <Dialog open={isOpen} onOpenChange={setIsOpen}>
                     <DialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="w-full h-20 text-xs border-dashed border-indigo-300 text-indigo-600 bg-indigo-50 hover:bg-indigo-100">
+                        <Button variant="outline" size="sm" className="w-full h-10 text-xs border-dashed border-indigo-300 text-indigo-600 bg-indigo-50 hover:bg-indigo-100">
                             <Plus size={14} className="mr-1" /> Upload Dokumen
                         </Button>
                     </DialogTrigger>
@@ -447,7 +455,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                         </DialogHeader>
 
                         <form onSubmit={handleSubmitBukti} className="space-y-4 py-2">
-                            {/* Input 1: File */}
                             <div className="space-y-2">
                                 <Label className="text-xs font-bold text-gray-700">1. Upload File (Opsional)</Label>
                                 <div className="flex items-center justify-center w-full">
@@ -458,7 +465,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                                                 {data.bukti ? data.bukti.name : "Klik untuk upload (PDF, Doc, Img)"}
                                             </p>
                                         </div>
-                                        {/* Tombol Reset File */}
                                         {data.bukti && (
                                             <div className="absolute top-1 right-1 bg-red-100 rounded-full p-1 hover:bg-red-200 z-10" onClick={(e) => { e.preventDefault(); setData('bukti', null); }}>
                                                 <X size={12} className="text-red-600" />
@@ -478,7 +484,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                                 <div className="flex-grow border-t border-gray-200"></div>
                             </div>
 
-                            {/* Input 2: Text */}
                             <div className="space-y-2">
                                 <Label className="text-xs font-bold text-gray-700">2. Tautan / Keterangan (Opsional)</Label>
                                 <Textarea
@@ -500,13 +505,13 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                     </DialogContent>
                 </Dialog>
 
-                {/* List File yang sudah diupload */}
                 {sortedUploads.length > 0 && (
                     <div className="space-y-2">
-                        <Badge variant="outline" className="w-fit text-[10px] bg-green-50 text-green-700 border-green-200 mb-1">TERBARU</Badge>
-                        <FileItem file={sortedUploads[0]} canDelete={true} />
+                        <div className="relative">
+                            <Badge variant="outline" className="w-fit text-[9px] bg-green-50 text-green-700 border-green-200 mb-1">TERBARU</Badge>
+                            <FileItem file={sortedUploads[0]} canDelete={sortedUploads[0].id_pami === indikator.pami?.id} />
+                        </div>
 
-                        {/* History */}
                         {sortedUploads.length > 1 && (
                             <details className="group/history text-xs mt-1">
                                 <summary className="flex items-center gap-1.5 text-gray-500 cursor-pointer hover:text-indigo-600 transition-colors list-none select-none font-medium">
@@ -514,9 +519,13 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                                     <span>Riwayat ({sortedUploads.length - 1})</span>
                                     <ChevronRight size={12} className="group-open/history:rotate-90 transition-transform" />
                                 </summary>
-                                <div className="mt-2 pl-2 space-y-2 border-l border-dashed border-gray-300 ml-1.5">
-                                    {sortedUploads.slice(1).map(file => (
-                                        <FileItem key={file.id} file={file} canDelete={true} />
+                                <div className="mt-2 pl-2 space-y-2 border-l border-dashed border-gray-300 ml-1.5 animate-in slide-in-from-top-2">
+                                    {sortedUploads.slice(1).map((file: any) => (
+                                        <FileItem
+                                            key={file.id}
+                                            file={file}
+                                            canDelete={file.id_pami === indikator.pami?.id}
+                                        />
                                     ))}
                                 </div>
                             </details>
@@ -527,10 +536,24 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
         );
     };
 
-    // --- RENDERER KHUSUS AUDITOR ---
-    const RenderDokumenAuditor = ({ indikator }: { indikator: Indikator }) => {
-        const uploads = indikator.pami?.uploads || [];
-        const sortedUploads = [...uploads].sort(
+    // 3. RENDERER KHUSUS AUDITOR
+    const RenderDokumenAuditor = ({ indikator }: { indikator: any }) => {
+        const allUploads = useMemo(() => {
+            let list: any[] = [];
+            if (indikator.pami?.uploads) {
+                list = [...indikator.pami.uploads.map((u: any) => ({ ...u, pami_year: meta.selected_year }))];
+            }
+            if (indikator.pamis) {
+                indikator.pamis.forEach((p: any) => {
+                    if (p.id !== indikator.pami?.id && p.uploads) {
+                        list = [...list, ...p.uploads.map((u: any) => ({ ...u, pami_year: p.jadwal?.tahun }))];
+                    }
+                });
+            }
+            return list;
+        }, [indikator]);
+
+        const sortedUploads = [...allUploads].sort(
             (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
 
@@ -539,48 +562,31 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                 <div className="flex flex-col items-center justify-center p-4 border border-dashed border-gray-300 rounded-lg bg-gray-50/50 text-gray-400">
                     <FileText size={20} className="mb-2 opacity-50" />
                     <span className="text-[10px] text-center font-medium">
-                        Belum ada bukti pemenuhan
+                        Belum ada bukti
                     </span>
-                    <span className="text-[10px] text-gray-400">
-                        Wajib diisi sebelum dinilai
-                    </span>
-
                 </div>
             );
         }
 
         return (
             <div className="flex flex-col gap-3">
-                {/* FILE TERBARU */}
                 <div>
-                    <Badge
-                        variant="outline"
-                        className="w-fit text-[10px] bg-blue-50 text-blue-700 border-blue-200 mb-1"
-                    >
+                    <Badge variant="outline" className="w-fit text-[9px] bg-blue-50 text-blue-700 border-blue-200 mb-1">
                         TERBARU
                     </Badge>
                     <FileItem file={sortedUploads[0]} canDelete={false} />
                 </div>
 
-                {/* RIWAYAT */}
                 {sortedUploads.length > 1 && (
                     <details className="group/history text-xs">
                         <summary className="flex items-center gap-1.5 text-gray-500 cursor-pointer hover:text-indigo-600 transition-colors list-none select-none font-medium">
                             <History size={12} />
                             <span>Riwayat ({sortedUploads.length - 1})</span>
-                            <ChevronRight
-                                size={12}
-                                className="group-open/history:rotate-90 transition-transform"
-                            />
+                            <ChevronRight size={12} className="group-open/history:rotate-90 transition-transform" />
                         </summary>
-
                         <div className="mt-2 pl-2 space-y-2 border-l border-dashed border-gray-300 ml-1.5">
-                            {sortedUploads.slice(1).map(file => (
-                                <FileItem
-                                    key={file.id}
-                                    file={file}
-                                    canDelete={false}
-                                />
+                            {sortedUploads.slice(1).map((file: any) => (
+                                <FileItem key={file.id} file={file} canDelete={false} />
                             ))}
                         </div>
                     </details>
@@ -589,6 +595,9 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
         );
     };
 
+    // =========================================================
+    // ↑↑↑ BATAS AKHIR KOMPONEN YANG DI-INSERT ↑↑↑
+    // =========================================================
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -601,7 +610,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                 indikator={selectedCarIndikator}
                 userRole={meta.is_auditor ? 'auditor' : 'auditee'}
             />
-
 
             {/* --- KONFIRMASI NILAI MODAL --- */}
             <Dialog open={!!scoreConfirm} onOpenChange={(open) => !open && setScoreConfirm(null)}>
@@ -658,7 +666,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
 
             {/* --- PREVIEW FILE MODAL --- */}
             <Dialog open={!!previewFile} onOpenChange={(open) => !open && setPreviewFile(null)}>
@@ -758,7 +765,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                                             </span>
                                         </div>
                                     </th>
-
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
@@ -777,7 +783,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                                             {standar.indikators.map((indikator: any, idx: number) => {
                                                 const currentScore = indikator.pami?.skor;
                                                 const isNegative = currentScore && NEGATIVE_SCORES.includes(currentScore);
-                                                const hasCar = !!indikator.car;
 
                                                 return (
                                                     <tr
@@ -858,7 +863,6 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                                                                                 ))}
                                                                             </select>
 
-                                                                            {/* ICON DROPDOWN */}
                                                                             <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-400">
                                                                                 <svg
                                                                                     className="h-4 w-4"
@@ -889,8 +893,7 @@ export default function PamiIndex({ auth, pamiData, meta }: Props) {
                                                                     )}
                                                                 </div>
 
-
-                                                                {/* ✅ TOMBOL CAR (PAKAI DIV, BUKAN TD) */}
+                                                                {/* TOMBOL CAR */}
                                                                 {indikator.car && (
                                                                     <div className="mt-2">
                                                                         <Button

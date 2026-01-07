@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card"; // Gunakan Card untuk konsistensi
+import { Card } from "@/components/ui/card";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/dialog";
 import {
     Trash2, Edit, Save, RotateCcw, Plus, Calendar, CheckCircle2, Eye, X,
-    FileText, User as UserIcon, Search, LayoutDashboard, Layers
+    FileText, User as UserIcon, LayoutDashboard, Layers,
+    HelpCircle, AlertTriangle, Printer // Import Icon Printer
 } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -23,12 +24,21 @@ import "react-datepicker/dist/react-datepicker.css";
 // Helper format tanggal Indonesia
 const formatDate = (dateString) => {
     if (!dateString) return "-";
-    return new Date(dateString).toLocaleDateString("id-ID", {
+    const date = new Date(dateString.replace(/-/g, '/'));
+    return date.toLocaleDateString("id-ID", {
         day: "numeric", month: "short", year: "numeric"
     });
 };
 
-export default function JadwalIndex({ data, masterData, filters }) {
+const getLocalDateString = (date) => {
+    if (!date) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+export default function JadwalIndex({ data, masterData }) {
     // --- STATE UTAMA ---
     const [isEditMode, setIsEditMode] = useState(false);
     const [selectedId, setSelectedId] = useState(null);
@@ -36,6 +46,15 @@ export default function JadwalIndex({ data, masterData, filters }) {
     // --- STATE MODAL DETAIL ---
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [detailItem, setDetailItem] = useState(null);
+
+    // --- STATE HELP/CONFIRMATION ---
+    const [helpDialog, setHelpDialog] = useState({
+        isOpen: false,
+        type: "info",
+        title: "",
+        message: "",
+        action: null
+    });
 
     // --- STATE FORM HEADER ---
     const [header, setHeader] = useState({
@@ -45,14 +64,13 @@ export default function JadwalIndex({ data, masterData, filters }) {
         tgl_selesai: "",
     });
 
-    // --- STATE FORM DETAIL (BUFFER) ---
+    // --- STATE FORM DETAIL ---
     const [details, setDetails] = useState([]);
     const [tempDetail, setTempDetail] = useState({ user_id: "", id_departemen: "" });
 
-    // Generate Tahun 2025-2030
     const yearList = Array.from({ length: 6 }, (_, i) => (2025 + i).toString());
 
-    // --- FILTER DATA TABEL ---
+    // --- FILTER DATA ---
     const filteredData = useMemo(() => {
         return data.filter(item => item.tahun.toString() === header.tahun);
     }, [data, header.tahun]);
@@ -118,17 +136,18 @@ export default function JadwalIndex({ data, masterData, filters }) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (details.length === 0) return toast.error("Minimal masukan 1 tim audit!");
-
+    const executeSubmit = () => {
         const payload = { ...header, details };
         const options = {
             onSuccess: () => {
                 toast.success(isEditMode ? "Berhasil diperbarui" : "Berhasil disimpan");
                 resetForm();
+                setHelpDialog(prev => ({ ...prev, isOpen: false }));
             },
-            onError: () => toast.error("Gagal menyimpan data"),
+            onError: () => {
+                toast.error("Gagal menyimpan data");
+                setHelpDialog(prev => ({ ...prev, isOpen: false }));
+            },
             preserveScroll: true
         };
 
@@ -139,10 +158,42 @@ export default function JadwalIndex({ data, masterData, filters }) {
         }
     };
 
-    const handleDelete = (id) => {
-        if (confirm("Hapus jadwal ini?")) {
-            router.delete(route('jadwal.destroy', id), { onSuccess: () => toast.success("Terhapus") });
-        }
+    const executeDelete = (id) => {
+        router.delete(route('jadwal.destroy', id), {
+            onSuccess: () => {
+                toast.success("Terhapus");
+                setHelpDialog(prev => ({ ...prev, isOpen: false }));
+            },
+            onError: () => {
+                toast.error("Gagal menghapus");
+                setHelpDialog(prev => ({ ...prev, isOpen: false }));
+            }
+        });
+    };
+
+    const onFormSubmitClick = (e) => {
+        e.preventDefault();
+        if (details.length === 0) return toast.error("Minimal masukan 1 tim audit!");
+
+        setHelpDialog({
+            isOpen: true,
+            type: "info",
+            title: isEditMode ? "Konfirmasi Perubahan" : "Konfirmasi Penyimpanan",
+            message: isEditMode
+                ? "Apakah Anda yakin ingin memperbarui data jadwal ini?"
+                : "Apakah Anda yakin ingin membuat jadwal baru ini?",
+            action: () => executeSubmit()
+        });
+    };
+
+    const onDeleteClick = (id) => {
+        setHelpDialog({
+            isOpen: true,
+            type: "danger",
+            title: "Konfirmasi Hapus",
+            message: "Data jadwal dan detailnya akan dihapus permanen. Lanjutkan?",
+            action: () => executeDelete(id)
+        });
     };
 
     const openDetailModal = (item) => {
@@ -150,7 +201,7 @@ export default function JadwalIndex({ data, masterData, filters }) {
         setIsDetailOpen(true);
     };
 
-    // Fungsi Render Hierarki (Styled)
+    // --- FUNGSI RENDER VIEW (HIERARKI) ---
     const renderHierarchyForDept = (deptId) => {
         const { lingkups = [], kriterias = [], standars = [] } = masterData;
         const deptStandars = standars.filter(s => String(s.id_departemen) === String(deptId));
@@ -208,10 +259,9 @@ export default function JadwalIndex({ data, masterData, filters }) {
         <AppLayout breadcrumbs={[{ title: "Dashboard", href: "/dashboard" }, { title: "Penjadwalan Audit", href: "/jadwal" }]}>
             <Head title="Jadwal Audit" />
 
-            {/* --- CONTAINER BACKGROUND (STYLE PAMI) --- */}
             <div className="p-4 md:p-8 bg-gray-50 min-h-screen dark:bg-gradient-to-r dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
 
-                {/* --- HEADER SECTION --- */}
+                {/* --- HEADER --- */}
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-8 gap-6">
                     <div className="space-y-1">
                         <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">
@@ -223,7 +273,6 @@ export default function JadwalIndex({ data, masterData, filters }) {
                         </div>
                     </div>
 
-                    {/* CONTROL CARD (GLASSMORPHISM) */}
                     <Card className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur border-indigo-100 dark:border-gray-700 shadow-sm w-full xl:w-auto">
                         <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-gray-500" />
@@ -250,7 +299,7 @@ export default function JadwalIndex({ data, masterData, filters }) {
                                 {isEditMode ? "Edit Jadwal" : "Buat Jadwal Baru"}
                             </h3>
 
-                            <form onSubmit={handleSubmit} className="space-y-4">
+                            <form onSubmit={onFormSubmitClick} className="space-y-4">
                                 <div>
                                     <Label className="text-slate-600 dark:text-slate-400">No. SK</Label>
                                     <Input
@@ -267,8 +316,8 @@ export default function JadwalIndex({ data, masterData, filters }) {
                                             <DatePicker
                                                 dateFormat="dd/MM/yyyy"
                                                 placeholderText="dd/mm/yyyy"
-                                                selected={header.tgl_mulai ? new Date(header.tgl_mulai) : null}
-                                                onChange={(date) => setHeader({ ...header, tgl_mulai: date ? date.toISOString().split("T")[0] : "" })}
+                                                selected={header.tgl_mulai ? new Date(header.tgl_mulai.replace(/-/g, '/')) : null}
+                                                onChange={(date) => setHeader({ ...header, tgl_mulai: getLocalDateString(date) })}
                                                 className="w-full rounded-md border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white"
                                                 required
                                             />
@@ -280,8 +329,8 @@ export default function JadwalIndex({ data, masterData, filters }) {
                                             <DatePicker
                                                 dateFormat="dd/MM/yyyy"
                                                 placeholderText="dd/mm/yyyy"
-                                                selected={header.tgl_selesai ? new Date(header.tgl_selesai) : null}
-                                                onChange={(date) => setHeader({ ...header, tgl_selesai: date ? date.toISOString().split("T")[0] : "" })}
+                                                selected={header.tgl_selesai ? new Date(header.tgl_selesai.replace(/-/g, '/')) : null}
+                                                onChange={(date) => setHeader({ ...header, tgl_selesai: getLocalDateString(date) })}
                                                 className="w-full rounded-md border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white"
                                                 required
                                             />
@@ -289,7 +338,6 @@ export default function JadwalIndex({ data, masterData, filters }) {
                                     </div>
                                 </div>
 
-                                {/* Form Tambah Detail (Mapping) */}
                                 <div className="bg-slate-50 dark:bg-gray-900/50 p-3 rounded-lg border border-slate-200 dark:border-gray-700 space-y-3">
                                     <Label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
                                         <UserIcon size={12} /> Tambah Tim Audit
@@ -309,13 +357,11 @@ export default function JadwalIndex({ data, masterData, filters }) {
                                         </SelectContent>
                                     </Select>
 
-
                                     <Button type="button" onClick={addDetailToBuffer} variant="secondary" size="sm" className="w-full border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800 dark:hover:bg-indigo-900/40">
                                         <Plus className="w-4 h-4 mr-2" /> Tambah ke List
                                     </Button>
                                 </div>
 
-                                {/* List Buffer */}
                                 {details.length > 0 && (
                                     <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
                                         {details.map((d, idx) => (
@@ -350,12 +396,10 @@ export default function JadwalIndex({ data, masterData, filters }) {
 
                     {/* --- 2. TABEL DATA (KANAN) --- */}
                     <div className="lg:col-span-2">
-                        {/* Table Card Style Pami */}
                         <Card className="overflow-hidden shadow-xl border-0 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 rounded-xl">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left">
                                     <thead>
-                                        {/* Gradient Header */}
                                         <tr className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm">
                                             <th className="p-5 font-semibold">Info Jadwal</th>
                                             <th className="p-5 font-semibold">Tim Audit</th>
@@ -408,7 +452,7 @@ export default function JadwalIndex({ data, masterData, filters }) {
                                                             <Button size="icon" variant="ghost" className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-900/30" onClick={() => handleEdit(item)} title="Edit">
                                                                 <Edit size={16} />
                                                             </Button>
-                                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30" onClick={() => handleDelete(item.id_jadwal)} title="Hapus">
+                                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/30" onClick={() => onDeleteClick(item.id_jadwal)} title="Hapus">
                                                                 <Trash2 size={16} />
                                                             </Button>
                                                         </div>
@@ -439,7 +483,6 @@ export default function JadwalIndex({ data, masterData, filters }) {
                         <div className="mt-4 space-y-4">
                             {detailItem?.details.map((det, index) => (
                                 <div key={index} className="border border-indigo-100 dark:border-gray-700 rounded-lg p-4 bg-indigo-50/50 dark:bg-gray-800">
-                                    {/* Header per Departemen */}
                                     <div className="flex justify-between items-center mb-4 pb-2 border-b border-indigo-100 dark:border-gray-700 ">
                                         <div>
                                             <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold">Auditee</div>
@@ -452,16 +495,61 @@ export default function JadwalIndex({ data, masterData, filters }) {
                                             </div>
                                         </div>
                                     </div>
-
-                                    {/* Render Hierarki Standar Khusus Dept Ini */}
                                     <div className=" bg-white dark:bg-gray-900 p-3 rounded border border-slate-100 dark:border-gray-700 shadow-sm whitespace-pre-line">
                                         {renderHierarchyForDept(det.id_departemen)}
                                     </div>
                                 </div>
                             ))}
                         </div>
+
+                        {/* UPDATE: Bagian Footer Modal dengan Tombol Download PDF */}
                         <DialogFooter>
+                            <Button
+                                variant="outline"
+                                className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950"
+                                onClick={() => {
+                                    if (detailItem?.id_jadwal) {
+                                        window.open(`/jadwal/${detailItem.id_jadwal}/export`, '_blank');
+                                    }
+                                }}
+                            >
+                                <Printer size={16} /> Download PDF
+                            </Button>
+
                             <Button variant="secondary" onClick={() => setIsDetailOpen(false)} className="dark:bg-gray-800 dark:text-white dark:border-gray-600">Tutup</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* --- 4. HELP / CONFIRMATION DIALOG --- */}
+                <Dialog open={helpDialog.isOpen} onOpenChange={(open) => !open && setHelpDialog(prev => ({ ...prev, isOpen: false }))}>
+                    <DialogContent className="sm:max-w-[425px] bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-700">
+                        <DialogHeader>
+                            <DialogTitle className={`flex items-center gap-2 ${helpDialog.type === 'danger' ? 'text-red-600' : 'text-indigo-600'}`}>
+                                {helpDialog.type === 'danger' ? <AlertTriangle className="w-5 h-5" /> : <HelpCircle className="w-5 h-5" />}
+                                {helpDialog.title}
+                            </DialogTitle>
+                            <DialogDescription className="pt-2 text-slate-600 dark:text-slate-300">
+                                {helpDialog.message}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter className="mt-4 flex gap-2 sm:justify-end">
+                            <Button
+                                variant="outline"
+                                onClick={() => setHelpDialog(prev => ({ ...prev, isOpen: false }))}
+                                className="dark:bg-gray-800 dark:text-white dark:border-gray-700"
+                            >
+                                Batal
+                            </Button>
+                            <Button
+                                variant={helpDialog.type === 'danger' ? 'destructive' : 'default'}
+                                onClick={() => {
+                                    if (helpDialog.action) helpDialog.action();
+                                }}
+                                className={helpDialog.type !== 'danger' ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}
+                            >
+                                {helpDialog.type === 'danger' ? "Ya, Hapus" : "Ya, Lanjutkan"}
+                            </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

@@ -58,7 +58,10 @@ class Indikator extends Model
     {
         return $this->hasOne(Pami::class, 'id_indikator', 'id_indikator');
     }
-
+    public function pamis()
+    {
+        return $this->hasMany(Pami::class, 'id_indikator', 'id_indikator');
+    }
     public function car()
     {
         return $this->hasOne(Car::class, 'id_indikator', 'id_indikator');

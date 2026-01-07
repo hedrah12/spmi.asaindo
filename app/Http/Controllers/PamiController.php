@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use Barryvdh\DomPDF\Facade\Pdf; // Pastikan import PDF benar
 
 class PamiController extends Controller
 {
@@ -33,7 +34,7 @@ class PamiController extends Controller
         $availableYears = JadwalAudit::select('tahun')->distinct()->orderBy('tahun', 'desc')->pluck('tahun');
         $selectedYear = $request->input('tahun', $availableYears->first() ?? date('Y'));
 
-        // --- 1. LOGIKA ROLE & DATA ---
+        // --- 1. LOGIKA ROLE & DATA (MENCARI TARGET DEPT & JADWAL AKTIF) ---
         if ($currentRole === 'auditor') {
             $assignments = JadwalAuditDetail::with(['departemen', 'jadwal'])
                 ->where('user_id', $user->id)
@@ -93,6 +94,12 @@ class PamiController extends Controller
         $pamiData = [];
         if ($idJadwal && $targetDeptId) {
 
+            // [BARU] AMBIL RIWAYAT ID JADWAL DEPARTEMEN INI
+            // Kita cari semua jadwal yang pernah diikuti oleh departemen ini (tahun berapapun)
+            $historyJadwalIds = JadwalAuditDetail::where('id_departemen', $targetDeptId)
+                ->pluck('id_jadwal')
+                ->toArray();
+
             // Logika Filter: Indikator Belum Dinilai
             $filterBelumDinilai = function ($query) use ($idJadwal) {
                 $query->where(function ($q) use ($idJadwal) {
@@ -108,13 +115,19 @@ class PamiController extends Controller
                 });
             };
 
-            $pamiData = Standar::with(['kriteria', 'indikators' => function ($query) use ($idJadwal, $filterBelumDinilai) {
+            $pamiData = Standar::with(['kriteria', 'indikators' => function ($query) use ($idJadwal, $historyJadwalIds, $filterBelumDinilai) {
                 $query->select('indikators.*')
-                    // Load Relation PAMI & Uploads
+                    // 1. Load PAMI TAHUN INI (Singular) - Untuk Form Input & Skor Aktif
                     ->with(['pami' => function ($q) use ($idJadwal) {
                         $q->where('id_jadwal', $idJadwal)->with('uploads');
                     }])
-                    // Load Relation CAR
+                    // 2. [BARU] Load RIWAYAT PAMI (Plural) - Untuk Menampilkan File Tahun Lalu
+                    ->with(['pamis' => function ($q) use ($historyJadwalIds) {
+                        $q->whereIn('id_jadwal', $historyJadwalIds) // Ambil semua Pami milik dept ini
+                          ->with(['uploads', 'jadwal']) // Load upload & info tahun jadwalnya
+                          ->orderBy('id_jadwal', 'desc'); // Urutkan dari tahun terbaru
+                    }])
+                    // 3. Load Relation CAR
                     ->with(['car' => function ($q) use ($idJadwal) {
                         $q->where('id_jadwal', $idJadwal);
                     }])
@@ -122,8 +135,6 @@ class PamiController extends Controller
                     ->where($filterBelumDinilai);
             }])
                 // FILTER PARENT (STANDAR):
-                // Hanya tampilkan Standar yang MASIH punya indikator yang belum dinilai.
-                // Jika semua indikator di standar tersebut sudah dinilai, standar tidak perlu muncul.
                 ->whereHas('indikators', $filterBelumDinilai)
                 ->where('id_departemen', $targetDeptId)
                 ->get();
@@ -150,17 +161,12 @@ class PamiController extends Controller
     // --- STORE NILAI AUDIT ---
     public function store(Request $request)
     {
-        // 1. Validasi Gabungan (Buat skor jadi nullable agar Auditee bisa upload tanpa isi skor)
         $request->validate([
             'id_jadwal' => 'required',
             'id_indikator' => 'required',
-
-            // Validasi Auditor
             'skor' => 'nullable',
             'temuan' => 'nullable|required_if:skor,Ketidaksesuaian Minor,Ketidaksesuaian Mayor,Ketidaksesuaian Observasi',
             'tanggal_pemenuhan' => 'nullable|required_if:skor,Ketidaksesuaian Minor,Ketidaksesuaian Mayor,Ketidaksesuaian Observasi',
-
-            // Validasi Auditee (File & Keterangan)
             'bukti' => 'nullable|file|max:20480', // 20MB
             'keterangan' => 'nullable|string',
         ]);
@@ -169,31 +175,25 @@ class PamiController extends Controller
             $user = Auth::user();
             $role = strtolower(session('active_role') ?? $user->getRoleNames()->first());
 
-            // ------------------------------------------------------------------
-            // A. LOGIKA AUDITEE: UPLOAD BUKTI / KETERANGAN
-            // ------------------------------------------------------------------
+            // A. LOGIKA AUDITEE
             if (in_array($role, ['auditee', 'superadmin', 'admin']) && ($request->hasFile('bukti') || $request->filled('keterangan'))) {
-
-                // Cari atau Buat Parent PAMI
                 $pami = Pami::firstOrCreate(
                     [
                         'id_jadwal' => $request->id_jadwal,
                         'id_indikator' => $request->id_indikator
                     ],
-                    ['skor' => null] // Default jika belum dinilai
+                    ['skor' => null]
                 );
 
                 $filePath = null;
                 $fileName = null;
 
-                // Handle File
                 if ($request->hasFile('bukti')) {
                     $file = $request->file('bukti');
                     $filePath = $file->store('bukti_audit', 'public');
                     $fileName = $file->getClientOriginalName();
                 }
 
-                // Simpan ke PamiUploads
                 PamiUpload::create([
                     'id_pami' => $pami->id,
                     'file_path' => $filePath,
@@ -203,13 +203,8 @@ class PamiController extends Controller
                 ]);
             }
 
-            // ------------------------------------------------------------------
-            // B. LOGIKA AUDITOR: SIMPAN NILAI & AUTO-CAR
-            // ------------------------------------------------------------------
-            // Hanya jalankan jika request membawa 'skor'
+            // B. LOGIKA AUDITOR
             if ($request->filled('skor')) {
-
-                // Simpan/Update Skor
                 Pami::updateOrCreate(
                     [
                         'id_jadwal' => $request->id_jadwal,
@@ -218,7 +213,6 @@ class PamiController extends Controller
                     ['skor' => $request->skor]
                 );
 
-                // Cek Skor Negatif -> Buat CAR
                 $negativeScores = ["Ketidaksesuaian Observasi", "Ketidaksesuaian Minor", "Ketidaksesuaian Mayor"];
 
                 if (in_array($request->skor, $negativeScores)) {
@@ -241,7 +235,6 @@ class PamiController extends Controller
         return redirect()->back()->with('message', 'Data berhasil disimpan');
     }
 
-    // --- RESPON AUDITEE (FIX: LINK & FILE MASUK KE RIWAYAT PAMI UPLOADS) ---
     public function respondCar(Request $request)
     {
         $request->validate([
@@ -249,24 +242,19 @@ class PamiController extends Controller
             'akar_masalah' => 'required|string',
             'tindakan_koreksi' => 'required|string',
             'link_bukti' => 'nullable|string',
-            'file_bukti' => 'nullable|file|max:20480', // 20MB
+            'file_bukti' => 'nullable|file|max:20480',
         ]);
 
         DB::transaction(function () use ($request) {
             $car = Car::findOrFail($request->car_id);
 
-            // 1. Update Text Data di tabel CARS
             $car->update([
                 'akar_masalah' => $request->akar_masalah,
                 'tindakan_koreksi' => $request->tindakan_koreksi,
                 'status' => 'Submitted'
             ]);
 
-            // 2. Handle Bukti -> Masuk PamiUploads
             if ($request->hasFile('file_bukti') || $request->filled('link_bukti')) {
-
-                // PERBAIKAN LOGIC: Cari Pami ID berdasarkan Jadwal & Indikator dari CAR
-                // Ini lebih aman daripada $car->id_pami jika kolom itu tidak ada/kosong
                 $pami = Pami::firstOrCreate([
                     'id_jadwal' => $car->id_jadwal,
                     'id_indikator' => $car->id_indikator
@@ -281,9 +269,8 @@ class PamiController extends Controller
                     $fileName = $file->getClientOriginalName();
                 }
 
-                // Simpan ke Riwayat
                 PamiUpload::create([
-                    'id_pami' => $pami->id, // Gunakan ID dari query di atas
+                    'id_pami' => $pami->id,
                     'file_path' => $filePath,
                     'file_name' => $fileName,
                     'keterangan' => ($request->link_bukti ? $request->link_bukti . " " : "") . "[Bukti Tindak Lanjut CAR]",
@@ -295,23 +282,19 @@ class PamiController extends Controller
         return redirect()->back()->with('success', 'Respon CAR berhasil dikirim.');
     }
 
-    // --- VERIFIKASI AUDITOR ---
     public function verifyCar(Request $request)
     {
         $request->validate([
             'car_id' => 'required|exists:cars,id',
             'status' => 'required|in:Open,Close',
-            'skor'   => 'required|string', // Validasi skor wajib ada
+            'skor'   => 'required|string',
         ]);
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($request) {
-            // 1. Update Status CAR
-            $car = \App\Models\Car::findOrFail($request->car_id);
+        DB::transaction(function () use ($request) {
+            $car = Car::findOrFail($request->car_id);
             $car->update(['status' => $request->status]);
 
-            // 2. Update Skor di Tabel Pami
-            // Cari data Pami berdasarkan jadwal & indikator dari CAR tersebut
-            \App\Models\Pami::updateOrCreate(
+            Pami::updateOrCreate(
                 [
                     'id_jadwal'    => $car->id_jadwal,
                     'id_indikator' => $car->id_indikator
@@ -325,7 +308,6 @@ class PamiController extends Controller
         return redirect()->back()->with('success', 'Status Verifikasi dan Skor berhasil diperbarui.');
     }
 
-    // --- HAPUS FILE ---
     public function deleteFile($id)
     {
         $file = PamiUpload::find($id);
@@ -338,43 +320,39 @@ class PamiController extends Controller
 
         return redirect()->back()->with('message', 'Dokumen berhasil dihapus');
     }
+
     public function download($id)
     {
         $file = PamiUpload::findOrFail($id);
 
-        // 1. Cek path di database
         if (!$file->file_path) {
             abort(404, 'Path file tidak valid.');
         }
 
-        // 2. Cek fisik file di storage
         if (!Storage::disk('public')->exists($file->file_path)) {
             abort(404, 'File fisik tidak ditemukan di server.');
         }
 
-        // GANTI DARI 'download' MENJADI 'response'
-        // 'response' akan menampilkan file (preview) di browser jika memungkinkan (PDF/Gambar)
         return Storage::disk('public')->response($file->file_path);
     }
+
     public function print(Request $request)
-{
-    $id_indikator = $request->id_indikator;
-    $jadwal_id = $request->jadwal_id;
+    {
+        $id_indikator = $request->id_indikator;
+        $jadwal_id = $request->jadwal_id;
 
-    // Ambil data detail untuk indikator tersebut
-    $indikator = \App\Models\Indikator::with(['pami' => function($q) use ($jadwal_id) {
-        $q->where('id_jadwal', $jadwal_id);
-    }, 'car'])->findOrFail($id_indikator);
+        $indikator = \App\Models\Indikator::with(['pami' => function($q) use ($jadwal_id) {
+            $q->where('id_jadwal', $jadwal_id);
+        }, 'car'])->findOrFail($id_indikator);
 
-    $jadwal = \App\Models\JadwalAudit::with('departemen')->findOrFail($jadwal_id);
+        $jadwal = \App\Models\JadwalAudit::with('departemen')->findOrFail($jadwal_id);
 
-    // Load view PDF (pastikan file resources/views/exports/pencatatan_ami.blade.php sudah ada)
-    $pdf = Pdf::loadView('exports.pencatatan_ami', [
-        'indikator' => $indikator,
-        'jadwal' => $jadwal,
-        'tanggal' => now()->format('d F Y')
-    ]);
+        $pdf = Pdf::loadView('exports.pencatatan_ami', [
+            'indikator' => $indikator,
+            'jadwal' => $jadwal,
+            'tanggal' => now()->format('d F Y')
+        ]);
 
-    return $pdf->stream("Hasil_Audit_Indikator_{$id_indikator}.pdf");
-}
+        return $pdf->stream("Hasil_Audit_Indikator_{$id_indikator}.pdf");
+    }
 }

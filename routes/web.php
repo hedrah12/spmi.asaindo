@@ -109,6 +109,8 @@ Route::middleware(['auth', 'menu.permission'])->group(function () {
     Route::resource('standar', StandarController::class);
     Route::resource('kriteria', KriteriaController::class);
 
+    Route::post('/indikator/import', [IndikatorController::class, 'import'])->name('indikator.import');
+
     /*
     |--------------------------------------------------------------------------
     | SPMI - PAMI (Pencatatan Audit) & CAR
@@ -151,6 +153,7 @@ Route::middleware(['auth', 'menu.permission'])->group(function () {
     Route::post('/jadwal', [JadwalAuditController::class, 'store'])->name('jadwal.store');
     Route::put('/jadwal/{id}', [JadwalAuditController::class, 'update'])->name('jadwal.update');
     Route::delete('/jadwal/{id}', [JadwalAuditController::class, 'destroy'])->name('jadwal.destroy');
+    Route::get('/jadwal/{id}/export', [JadwalAuditController::class, 'exportChecklist'])->name('jadwal.export');
 
     /*
     |--------------------------------------------------------------------------

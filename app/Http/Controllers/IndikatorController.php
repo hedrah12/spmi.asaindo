@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Indikator;
-use App\Models\Kriteria;
-use App\Models\Standar;
-use App\Models\Lingkup;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
+use App\Models\Lingkup;
+use App\Models\Standar;
+use App\Models\Kriteria;
+use App\Models\Indikator;
+use Illuminate\Http\Request;
+use App\Imports\IndikatorImport;
+use Maatwebsite\Excel\Facades\Excel;
 
 /**
  * IndikatorController
@@ -125,5 +127,19 @@ class IndikatorController extends Controller
         $indikator->delete();
 
         return redirect()->back()->with('message', 'Indikator berhasil dihapus');
+    }
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv',
+        ]);
+
+        try {
+            Excel::import(new IndikatorImport, $request->file('file'));
+
+            return redirect()->back()->with('success', 'Data berhasil diimpor!');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal impor: ' . $e->getMessage());
+        }
     }
 }

@@ -7,15 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import {
     LayoutDashboard, AlertTriangle, Calendar, Building2,
     CheckCircle2, FileText, Link as LinkIcon, ExternalLink, AlertCircle,
-    FolderOpen, ChevronRight, Eye, Trash2, Loader2, Download,
+    FolderOpen, ChevronRight, Eye, Download,
     FileImage, FileSpreadsheet, FileVideo, FileMusic, File as FileIcon, X
 } from "lucide-react";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
-    DialogDescription
+    DialogDescription, DialogFooter
 } from "@/components/ui/dialog";
 
-// --- REUSE COMPONENT PAMI ---
+// --- REUSE COMPONENT PAMI (Pastikan path ini benar) ---
 import CarModal from '@/Pages/pami/CarModal';
 
 // --- TYPES ---
@@ -38,7 +38,7 @@ interface Car {
 }
 
 interface Indikator {
-    id: number;
+    id_indikator: number; // Sesuaikan dengan PamiIndex (id_indikator, bukan id)
     pernyataan_indikator: string;
     pami: {
         id: number;
@@ -49,14 +49,16 @@ interface Indikator {
 }
 
 interface Standar {
-    id: number;
+    id_standar: number; // Sesuaikan dengan PamiIndex
     pernyataan_standar: string;
     indikators: Indikator[];
 }
 
 interface Props {
     auth: any;
-    data: Standar[];
+    data: Standar[]; // Ubah prop name jadi 'data' (di controller Anda pass 'data', bukan 'pamiData' untuk PTK?)
+                     // Jika di controller Anda pass 'pamiData', ganti ini jadi pamiData.
+                     // Asumsi di sini prop-nya 'data' sesuai kode Anda sebelumnya.
     meta: {
         role: string;
         nama_departemen: string;
@@ -86,6 +88,8 @@ function getFileIcon(fileName: string | null, className = "w-6 h-6") {
 
 export default function PtkIndex({ auth, data, meta }: Props) {
     const [selectedIndikatorForModal, setSelectedIndikatorForModal] = useState<Indikator | null>(null);
+
+    // State Preview File (Sama seperti PamiIndex)
     const [previewFile, setPreviewFile] = useState<Upload | null>(null);
 
     const formatDate = (dateString: string | null) => {
@@ -97,7 +101,8 @@ export default function PtkIndex({ auth, data, meta }: Props) {
         { title: "Dashboard", href: "/dashboard" },
         { title: "Permohonan Tindak Koreksi", href: "/ptk" },
     ];
-    // --- COMPONENT: SWITCHERS (Style Match Index.tsx) ---
+
+    // --- COMPONENT: SWITCHERS ---
     const YearSwitcher = () => (
         <div className="relative group">
             <div className="absolute inset-y-0 left-0 flex items-center pl-2 pointer-events-none text-gray-500 dark:text-gray-400">
@@ -144,7 +149,7 @@ export default function PtkIndex({ auth, data, meta }: Props) {
         );
     };
 
-    // --- COMPONENT: FILE ITEM (Style Match Index.tsx) ---
+    // --- COMPONENT: FILE ITEM (Sama seperti PamiIndex) ---
     const FileItem = ({ file }: { file: Upload }) => (
         <div className="group relative pl-3 border-l-2 border-indigo-500 bg-white dark:bg-gray-800 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 p-2 rounded-r-md transition-colors border border-gray-100 dark:border-gray-700 shadow-sm mb-2">
             <div className="flex justify-between items-start">
@@ -184,20 +189,21 @@ export default function PtkIndex({ auth, data, meta }: Props) {
         </div>
     );
 
-    // --- HELPER: RENDER PREVIEW ---
+    // --- HELPER: RENDER PREVIEW (Konsisten dengan PamiIndex) ---
     const renderPreviewContent = (file: Upload) => {
-        // Gunakan path storage langsung
-        const url = file.file_path ? `/storage/${file.file_path}` : null;
+        // PERUBAHAN UTAMA: Gunakan route('pami.download') agar secure & sama dengan PamiIndex
+        // Pastikan Anda punya route pami.download yang akses method download di PamiController
+        const url = route('pami.download', file.id);
 
-        if (!url) {
-            return (
+        if (!file.file_path && file.keterangan) {
+             return (
                 <div className="flex flex-col items-center justify-center h-[50vh] text-center p-6 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                     <LinkIcon className="w-16 h-16 text-indigo-400 mb-4" />
                     <h3 className="text-lg font-medium text-gray-700 dark:text-gray-200">Keterangan / Tautan</h3>
                     <div className="mt-4 p-4 bg-white dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700 w-full max-w-lg overflow-y-auto max-h-[200px]">
                         <p className="text-sm text-gray-700 dark:text-gray-300 break-all whitespace-pre-line">{file.keterangan}</p>
                     </div>
-                    {file.keterangan && (file.keterangan.startsWith('http') || file.keterangan.startsWith('www')) && (
+                    {(file.keterangan.startsWith('http') || file.keterangan.startsWith('www')) && (
                         <Button className="mt-6 bg-indigo-600 hover:bg-indigo-700" onClick={() => window.open(file.keterangan || '#', '_blank')}>
                             <ExternalLink className="w-4 h-4 mr-2" /> Buka Tautan
                         </Button>
@@ -239,9 +245,9 @@ export default function PtkIndex({ auth, data, meta }: Props) {
 
             <div className="p-4 md:p-8 space-y-8 bg-gray-50 min-h-screen dark:bg-gradient-to-r dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
 
+                {/* --- HEADER --- */}
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
                     <div className="space-y-1">
-                        {/* Mengubah Gradient menjadi Indigo/Violet sesuai style PAMI/Index.tsx */}
                         <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-700 to-purple-600 dark:from-indigo-400 dark:to-purple-400 flex items-center gap-2">
                             Tindakan Koreksi
                         </h1>
@@ -290,7 +296,6 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                 <Card className="overflow-hidden shadow-xl border-0 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 rounded-xl">
                     <div className="overflow-x-auto">
                         <table className="w-full border-collapse text-sm text-left">
-                            {/* Header Gradient Indigo/Violet */}
                             <thead className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white border-b border-indigo-700">
                                 <tr>
                                     <th className="p-5 font-semibold w-[30%] rounded-tl-xl">Standar / Indikator</th>
@@ -312,10 +317,10 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                                     </tr>
                                 ) : (
                                     data.map((standar, sIdx) => (
-                                        <React.Fragment key={`standar-${standar.id || sIdx}`}>
+                                        <React.Fragment key={`standar-${standar.id_standar || sIdx}`}>
                                             {standar.indikators.map((ind, iIdx) => {
                                                 const skor = ind.pami?.skor || '-';
-                                                const rowKey = `row-${standar.id || sIdx}-${ind.id || iIdx}`;
+                                                const rowKey = `row-${standar.id_standar || sIdx}-${ind.id_indikator || iIdx}`;
 
                                                 return (
                                                     <tr key={rowKey} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors duration-200">
@@ -359,7 +364,6 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                                                         </td>
 
                                                         <td className="p-5 align-top border-r border-gray-100 dark:border-gray-800">
-                                                            {/* UPDATE: Menggunakan FileItem dari Index.tsx style */}
                                                             {ind.pami?.uploads?.length > 0 ? (
                                                                 <div className="space-y-1">
                                                                     {ind.pami.uploads.map((file, fIdx) => (
@@ -427,7 +431,7 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                 />
             )}
 
-            {/* MODAL PREVIEW FILE (Added to match Index.tsx capability) */}
+            {/* MODAL PREVIEW FILE (Konsisten dengan PamiIndex) */}
             <Dialog open={!!previewFile} onOpenChange={(open) => !open && setPreviewFile(null)}>
                 <DialogContent className="max-w-4xl w-full h-auto max-h-[90vh] overflow-y-auto dark:bg-gray-900 dark:border-gray-800">
                     <DialogHeader>
@@ -447,6 +451,15 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                     <div className="mt-2">
                         {previewFile && renderPreviewContent(previewFile)}
                     </div>
+
+                    <DialogFooter>
+                        <Button variant="secondary" onClick={() => setPreviewFile(null)}>Tutup</Button>
+                        {previewFile && previewFile.file_path && (
+                            <Button onClick={() => window.open(route('pami.download', previewFile.id), '_blank')}>
+                                <Download className="w-4 h-4 mr-2" /> Download Asli
+                            </Button>
+                        )}
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </AppLayout>

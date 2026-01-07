@@ -17,6 +17,13 @@ import type { LucideIcon } from 'lucide-react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+interface User {
+    id: number;
+    name: string;
+    email: string;
+    roles?: string[] | { name: string }[];
+}
+
 interface MenuItem {
     id: number;
     title: string;
@@ -26,12 +33,30 @@ interface MenuItem {
 }
 
 function RenderMenu({ items, level = 0 }: { items: MenuItem[]; level?: number }) {
-    const { url: currentUrl } = usePage();
 
-    // State untuk dropdown, default terbuka jika anak aktif
+    const { url: currentUrl, props } = usePage();
+    const auth = props.auth as { user: User };
+
+    const checkIsForcedOpen = () => {
+        const roles = auth?.user?.roles;
+        if (!roles) return false;
+
+        const forcedRoles = ['auditor', 'auditee'];
+
+        if (Array.isArray(roles)) {
+            return roles.some((r: any) => {
+                const roleName = typeof r === 'string' ? r : r.name;
+                return forcedRoles.includes(roleName.toLowerCase());
+            });
+        }
+
+        return forcedRoles.includes((roles as unknown as string).toLowerCase());
+    };
+
+    const isForcedOpen = checkIsForcedOpen();
+
     const [openMenus, setOpenMenus] = useState<{ [key: number]: boolean }>(() => {
         const initialState: { [key: number]: boolean } = {};
-
         const checkActive = (menuList: MenuItem[]) => {
             menuList.forEach((menu) => {
                 if (!menu) return;
@@ -43,16 +68,16 @@ function RenderMenu({ items, level = 0 }: { items: MenuItem[]; level?: number })
                             (child.children && child.children.some(grand => grand.route && currentUrl.startsWith(grand.route)))
                     );
                     initialState[menu.id] = isChildActive;
-                    checkActive(children); // cek rekursif untuk level lebih dalam
+                    checkActive(children);
                 }
             });
         };
-
         checkActive(items);
         return initialState;
     });
 
     const toggleMenu = (id: number) => {
+        if (isForcedOpen) return;
         setOpenMenus((prev) => ({ ...prev, [id]: !prev[id] }));
     };
 
@@ -64,7 +89,8 @@ function RenderMenu({ items, level = 0 }: { items: MenuItem[]; level?: number })
                 const children = Array.isArray(menu.children) ? menu.children.filter(Boolean) : [];
                 const hasChildren = children.length > 0;
                 const isActive = menu.route && currentUrl.startsWith(menu.route);
-                const isOpen = !!openMenus[menu.id];
+                const isOpen = isForcedOpen ? true : !!openMenus[menu.id];
+
                 const indentClass = level > 0 ? `pl-${4 + level * 3}` : '';
 
                 const activeClass = isActive
@@ -82,17 +108,20 @@ function RenderMenu({ items, level = 0 }: { items: MenuItem[]; level?: number })
                                     className={cn(
                                         `group flex items-center rounded-md transition-colors ${indentClass}`,
                                         activeClass,
-                                        level === 0 ? 'py-3 px-4 my-1' : 'py-2 px-3'
+                                        level === 0 ? 'py-3 px-4 my-1' : 'py-2 px-3',
+                                        isForcedOpen ? 'cursor-default hover:bg-transparent' : ''
                                     )}
                                 >
                                     <Icon className="size-4 mr-3 opacity-80 group-hover:opacity-100" />
                                     <span>{menu.title}</span>
-                                    <ChevronDown
-                                        className={cn(
-                                            'ml-auto size-4 opacity-50 group-hover:opacity-70 transition-transform',
-                                            isOpen ? 'rotate-0' : '-rotate-90'
-                                        )}
-                                    />
+                                    {!isForcedOpen && (
+                                        <ChevronDown
+                                            className={cn(
+                                                'ml-auto size-4 opacity-50 group-hover:opacity-70 transition-transform',
+                                                isOpen ? 'rotate-0' : '-rotate-90'
+                                            )}
+                                        />
+                                    )}
                                 </SidebarMenuButton>
 
                                 {isOpen && (
@@ -116,7 +145,6 @@ function RenderMenu({ items, level = 0 }: { items: MenuItem[]; level?: number })
                                     {children.length > 0 && (
                                         <ChevronRight className="ml-auto w-4 h-4 opacity-0 group-hover:opacity-50 transition-opacity" />
                                     )}
-
                                 </Link>
                             </SidebarMenuButton>
                         )}
@@ -134,19 +162,20 @@ export function AppSidebar() {
             collapsible="icon"
             variant="inset"
             className="border-r bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60
-            dark:bg-gradient-to-r
-              bg-gray-100 dark:from-gray-900
-    dark:via-gray-950
-    dark:to-gray-900"
+            dark:bg-gradient-to-r bg-gray-100 dark:from-gray-900 dark:via-gray-950 dark:to-gray-900"
         >
             <SidebarHeader className="px-4 py-3 border-b">
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton size=" " asChild className="hover:bg-transparent">
-                            <Link href="/dashboard" prefetch>
+                        <SidebarHeader className="px-4 py-3 border-b">
+                            <Link
+                                href="/dashboard"
+                                prefetch
+                                className="flex items-center justify-center"
+                            >
                                 <AppLogo />
                             </Link>
-                        </SidebarMenuButton>
+                        </SidebarHeader>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarHeader>

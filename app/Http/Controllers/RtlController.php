@@ -7,11 +7,9 @@ use App\Models\Departemen;
 use App\Models\JadwalAuditDetail;
 use App\Models\Car;
 use App\Models\Pami;
-use App\Models\PamiUpload;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class RtlController extends Controller
 {
@@ -21,20 +19,16 @@ class RtlController extends Controller
         $activeRole = session('active_role') ?? $user->getRoleNames()->first();
         $currentRole = strtolower($activeRole);
 
-        // 1. LOGIC DEPARTEMEN (Sama dengan PTK/PAMI)
-        // Admin/Superadmin lihat semua, User lihat sesuai hak
+        // 1. LOGIC DEPARTEMEN
         $myDepartments = [];
 
         if (in_array($currentRole, ['superadmin', 'admin'])) {
             $myDepartments = Departemen::select('id_departemen as id', 'nama_departemen as nama')
                 ->orderBy('nama_departemen', 'asc')
-                ->get()
-                ->toArray();
+                ->get()->toArray();
         } else {
-            // Gabungan departemen dimana user sebagai Auditor ATAU Auditee (Lintas Tahun)
             $deptAsAuditor = JadwalAuditDetail::where('user_id', $user->id)->pluck('id_departemen')->toArray();
-            $deptAsAuditee = Departemen::where('user_id', $user->id)->pluck('id_departemen')->toArray(); // Pemilik
-
+            $deptAsAuditee = Departemen::where('user_id', $user->id)->pluck('id_departemen')->toArray();
             $allowedIds = array_unique(array_merge($deptAsAuditor, $deptAsAuditee));
 
             if (!empty($allowedIds)) {
@@ -45,94 +39,90 @@ class RtlController extends Controller
             }
         }
 
-        // 2. VALIDASI DEPARTEMEN YANG DIPILIH
+        // 2. VALIDASI DEPARTEMEN
         $selectedDeptId = $request->input('dept_id');
-
-        // Default ke dept pertama jika tidak ada pilihan/akses salah
         if (empty($selectedDeptId) && count($myDepartments) > 0) {
             $selectedDeptId = $myDepartments[0]['id'];
         }
-
-        // Cek Validitas Akses (Kecuali admin bebas pilih ID valid)
         if (!in_array($currentRole, ['superadmin', 'admin'])) {
             $isAllowed = collect($myDepartments)->contains('id', $selectedDeptId);
             if (!$isAllowed && count($myDepartments) > 0) $selectedDeptId = $myDepartments[0]['id'];
         }
 
-        // 3. QUERY DATA RTL (LINTAS TAHUN, STATUS != CLOSE)
+        // 3. QUERY DATA RTL (LINTAS TAHUN)
         $data = [];
         if ($selectedDeptId) {
-
-            // Cari semua Jadwal ID yang terkait dengan Departemen ini
-            // Agar kita tidak salah ambil CAR milik departemen lain (untuk Standar Umum)
             $relatedJadwalIds = JadwalAuditDetail::where('id_departemen', $selectedDeptId)
                 ->pluck('id_jadwal')
                 ->toArray();
 
             $standars = Standar::query()
-                ->where(function($q) use ($selectedDeptId) {
-                    $q->where('id_departemen', $selectedDeptId)->orWhereNull('id_departemen');
-                })
-                // Filter: Hanya standar yang punya CAR belum Close di departemen ini
-                ->whereHas('indikators.car', function($q) use ($relatedJadwalIds) {
+                ->whereHas('indikators.car', function ($q) use ($relatedJadwalIds) {
                     $q->whereIn('id_jadwal', $relatedJadwalIds)
-                      ->where('status', '!=', 'Close'); // INTI LOGIC RTL
+                        ->where('status', '!=', 'Close');
                 })
-                ->with([
-                    'indikators' => function($query) use ($relatedJadwalIds) {
-                        $query->with(['pami' => function($q) use ($relatedJadwalIds) {
-                            $q->whereIn('id_jadwal', $relatedJadwalIds)->with('uploads');
-                        }]);
-                        $query->with(['car' => function($q) use ($relatedJadwalIds) {
-                            $q->whereIn('id_jadwal', $relatedJadwalIds)
-                              ->where('status', '!=', 'Close'); // Load hanya yang belum close
-                        }]);
-                        // Tambahan: Load Jadwal untuk info Tahun
-                        $query->with(['car.jadwal']);
-                    }
-                ])
                 ->get();
 
-            // MAPPING DATA
-            $data = $standars->map(function($standar) {
-                $filteredIndikators = $standar->indikators->map(function($ind) {
-                    if (!$ind->car) return null; // Skip jika null (atau sudah close)
+            // MAPPING DATA (Stacked Row Logic)
+            $data = $standars->map(function ($standar) use ($relatedJadwalIds) {
+
+                $mappedIndikators = $standar->indikators->map(function ($ind) use ($relatedJadwalIds) {
+
+                    // CARI SEMUA CAR ACTIVE (LINTAS TAHUN)
+                    $activeCars = Car::where('id_indikator', $ind->id_indikator)
+                        ->whereIn('id_jadwal', $relatedJadwalIds)
+                        ->where('status', '!=', 'Close')
+                        ->with('jadwal')
+                        ->orderBy('id_jadwal', 'desc')
+                        ->get();
+
+                    if ($activeCars->isEmpty()) return null;
 
                     return [
-                        'id' => $ind->id_indikator,
+                        'id_indikator' => $ind->id_indikator,
                         'pernyataan_indikator' => $ind->pernyataan_indikator,
-                        'pami' => [
-                            'id' => $ind->pami->id ?? null,
-                            'skor' => $ind->pami->skor ?? '-',
-                            'uploads' => $ind->pami->uploads ? $ind->pami->uploads->map(fn($u) => [
-                                'id' => $u->id,
-                                'file_path' => $u->file_path,
-                                'file_name' => $u->file_name,
-                                'keterangan' => $u->keterangan,
-                                'created_at' => $u->created_at,
-                            ]) : [],
-                        ],
-                        'car' => [
-                            'id' => $ind->car->id,
-                            'id_jadwal' => $ind->car->id_jadwal,
-                            'id_indikator' => $ind->car->id_indikator,
-                            'status' => $ind->car->status,
-                            'temuan' => $ind->car->temuan,
-                            'akar_masalah' => $ind->car->akar_masalah,
-                            'tindakan_koreksi' => $ind->car->tindakan_koreksi,
-                            'tanggal_pemenuhan' => $ind->car->tanggal_pemenuhan,
-                            'tahun_audit' => $ind->car->jadwal->tahun ?? '-', // Info tambahan tahun
-                            'link_bukti' => null,
-                        ],
-                    ];
-                })->filter();
 
-                if ($filteredIndikators->isEmpty()) return null;
+                        // KIRIM SEBAGAI ARRAY 'cars'
+                        'cars' => $activeCars->map(function($car) use ($ind) {
+
+                            $pamiTepat = Pami::where('id_indikator', $ind->id_indikator)
+                                ->where('id_jadwal', $car->id_jadwal)
+                                ->with('uploads')
+                                ->first();
+
+                            return [
+                                'id' => $car->id,
+                                'id_jadwal' => $car->id_jadwal,
+                                'id_indikator' => $car->id_indikator,
+                                'status' => $car->status,
+                                'temuan' => $car->temuan,
+                                'akar_masalah' => $car->akar_masalah,
+                                'tindakan_koreksi' => $car->tindakan_koreksi,
+                                'tanggal_pemenuhan' => $car->tanggal_pemenuhan,
+                                'tahun_audit' => $car->jadwal->tahun ?? '-',
+                                'link_bukti' => null,
+
+                                'pami_data' => $pamiTepat ? [
+                                    'skor' => $pamiTepat->skor ?? '-',
+                                    'uploads' => $pamiTepat->uploads ? $pamiTepat->uploads->map(fn($u) => [
+                                        'id' => $u->id,
+                                        'file_path' => $u->file_path,
+                                        'file_name' => $u->file_name,
+                                        'keterangan' => $u->keterangan,
+                                        'created_at' => $u->created_at,
+                                    ]) : [],
+                                ] : null,
+                            ];
+                        })
+                    ];
+                })->filter()->values();
+
+                if ($mappedIndikators->isEmpty()) return null;
 
                 return [
-                    'id' => $standar->id_standar,
+                    'id_standar' => $standar->id_standar,
                     'pernyataan_standar' => $standar->pernyataan_standar,
-                    'indikators' => $filteredIndikators->values(),
+                    'indikators' => $mappedIndikators,
                 ];
             })->filter()->values();
         }
@@ -145,16 +135,10 @@ class RtlController extends Controller
                 'departemen_id' => (int)$selectedDeptId,
                 'my_departments' => $myDepartments,
                 'debug_message' => empty($data) && $selectedDeptId ? "Tidak ada tunggakan RTL untuk departemen ini." : null,
+                // FIX ERROR FRONTEND
+                'available_years' => JadwalAuditDetail::join('jadwal_audits', 'jadwal_audit_details.id_jadwal', '=', 'jadwal_audits.id_jadwal')->distinct()->pluck('tahun'),
+                'selected_year' => '',
             ],
         ]);
-    }
-
-    // UPDATE MENGGUNAKAN LOGIC YANG SAMA DENGAN PTK/PAMI
-    // Kita arahkan modal frontend ke route 'ptk.update' saja agar tidak duplikasi code,
-    // atau buat route baru 'rtl.update' yang memanggil method ini.
-    public function update(Request $request, $id)
-    {
-        // Re-use logic dari PtkController
-        return app(PtkController::class)->update($request, $id);
     }
 }
