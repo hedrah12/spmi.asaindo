@@ -14,7 +14,7 @@ export default function CreateNews() {
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         // PERUBAHAN DISINI: News.store
-        post(route('News.store'), {
+        post(route('news.store'), {
             onSuccess: () => toast.success('Berita berhasil dipublish')
         });
     };
@@ -50,7 +50,7 @@ export default function CreateNews() {
                         </div>
                         <div className="flex gap-2">
                             {/* PERUBAHAN DISINI: News.index */}
-                            <Link href={route('News.index')}>
+                            <Link href={route('news.index')}>
                                 <Button type="button" variant="outline">Batal</Button>
                             </Link>
                             <Button disabled={processing}>Simpan News</Button>

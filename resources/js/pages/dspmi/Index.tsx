@@ -4,7 +4,7 @@ import AppLayout from "@/layouts/app-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Card } from "@/components/ui/card"; // Gunakan Card
+import { Card } from "@/components/ui/card";
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog";
@@ -14,7 +14,8 @@ import {
 import {
     File as FileIcon, FileText, FileImage, FileSpreadsheet, FolderPlus,
     UploadCloud, Folder, Trash2, Pencil, MoreHorizontal,
-    Home, Search, ChevronRight, Eye, FileMusic, FileVideo, Download, Loader2
+    Home, Search, ChevronRight, Eye, FileMusic, FileVideo, Download, Loader2,
+    HelpCircle, AlertTriangle, Info, X
 } from "lucide-react";
 
 // 🔹 TYPE DEFINITIONS
@@ -79,19 +80,18 @@ const SidebarItem = ({ folder, allFolders, selectedId, onSelect, level = 0 }: Si
         <div>
             <button
                 onClick={() => onSelect(folder)}
-                className={`group w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md mb-1
-                transition-all truncate
+                className={`group w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md mb-0.5 transition-colors duration-200
                 ${isOpen
-                        ? "bg-indigo-100 text-indigo-700 font-bold dark:bg-indigo-900/40 dark:text-indigo-300"
-                        : "text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"}
+                        ? "bg-indigo-600 text-white font-medium shadow-sm"
+                        : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"}
                 pl-[calc(var(--indent-level)*1rem+0.75rem)]`}
                 style={{ "--indent-level": level } as React.CSSProperties}
                 title={folder.name}
             >
                 <Folder
                     className={`w-4 h-4 shrink-0 transition-colors ${isOpen
-                        ? "fill-indigo-500 text-indigo-500"
-                        : "fill-gray-300 text-gray-400 group-hover:fill-indigo-400 group-hover:text-indigo-400"
+                        ? "fill-white text-white"
+                        : "fill-indigo-100 text-indigo-500 group-hover:text-indigo-600"
                         }`}
                 />
                 <span className="truncate">{folder.name}</span>
@@ -111,16 +111,17 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
     const [isDragging, setIsDragging] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Modal State
     const [modal, setModal] = useState<{ type: "create" | "rename" | null; target?: FolderNode | null }>({ type: null, target: null });
     const [inputName, setInputName] = useState("");
 
-    // Preview State
+    const [deleteConfig, setDeleteConfig] = useState<{ type: 'folder' | 'file'; id: number; name: string } | null>(null);
+    const [showHelp, setShowHelp] = useState(false);
+
     const [previewFile, setPreviewFile] = useState<FileNode | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // 🔹 BREADCRUMBS CALCULATION
+    // 🔹 BREADCRUMBS
     const folderPath = useMemo(() => {
         const path: FolderNode[] = [];
         let current = selectedFolder;
@@ -175,6 +176,7 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
 
         router.post("/file", form, {
             forceFormData: true,
+            preserveScroll: true,
             onSuccess: () => {
                 toast.success("Upload berhasil!");
                 if (fileInputRef.current) fileInputRef.current.value = "";
@@ -187,21 +189,34 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
             onFinish: () => {
                 toast.dismiss(toastId);
                 setIsLoading(false);
+                setIsDragging(false);
             }
         });
     }, [selectedFolder, isLoading]);
 
-    const handleDelete = (type: 'folder' | 'file', id: number) => {
+    // Request Delete (Trigger Modal with setTimeout fix)
+    const requestDelete = (type: 'folder' | 'file', id: number, name: string) => {
         if (isLoading) return;
-        if (!confirm(`Yakin ingin menghapus ${type} ini?`)) return;
+        // Jeda sedikit agar dropdown menutup sempurna sebelum dialog buka
+        setTimeout(() => {
+            setDeleteConfig({ type, id, name });
+        }, 150);
+    };
+
+    // Confirm Delete
+    const confirmDelete = () => {
+        if (!deleteConfig) return;
 
         setIsLoading(true);
+        const { type, id } = deleteConfig;
 
         router.delete(`/${type}/${id}`, {
+            preserveScroll: true,
             onSuccess: () => {
                 toast.success(`${type === 'folder' ? 'Folder' : 'File'} berhasil dihapus`);
                 if (type === 'folder' && selectedFolder?.id === id) setSelectedFolder(null);
                 if (type === 'file' && previewFile?.id === id) setPreviewFile(null);
+                setDeleteConfig(null);
             },
             onError: () => toast.error("Gagal menghapus."),
             onFinish: () => setIsLoading(false)
@@ -219,12 +234,14 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
                 name: inputName,
                 parent_id: selectedFolder?.id || null
             }, {
+                preserveScroll: true,
                 onSuccess: () => { toast.success("Folder dibuat"); setModal({ type: null, target: null }); },
                 onError: () => toast.error("Gagal membuat folder"),
                 onFinish: () => setIsLoading(false)
             });
         } else if (modal.type === "rename" && modal.target) {
             router.put(`/folder/${modal.target.id}`, { name: inputName }, {
+                preserveScroll: true,
                 onSuccess: () => { toast.success("Folder diubah"); setModal({ type: null, target: null }); },
                 onError: () => toast.error("Gagal mengubah nama"),
                 onFinish: () => setIsLoading(false)
@@ -232,33 +249,72 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
         }
     };
 
-    // 🔹 PREVIEW RENDERER
+    // 🔹 PREVIEW RENDERER (IMPROVED)
     const renderPreviewContent = (file: FileNode) => {
         const mime = file.mime_type.toLowerCase();
-        if (mime.includes("image")) return <img src={file.url} alt={file.name} className="max-w-full max-h-[70vh] object-contain mx-auto rounded-md shadow-sm" />;
-        if (mime.includes("pdf")) return <iframe src={file.url} className="w-full h-[70vh] rounded-md border" title="PDF Preview"></iframe>;
-        if (mime.includes("video")) return <video controls src={file.url} className="w-full max-h-[70vh] rounded-md" />;
-        if (mime.includes("audio")) return <audio controls src={file.url} className="w-full mt-10" />;
+
+        // 1. IMAGE
+        if (mime.includes("image")) {
+            return (
+                <div className="w-full h-full flex items-center justify-center bg-[url('https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse4.mm.bing.net%2Fth%3Fid%3DOIP.2B7k0j7x7x7x7x7x7x7x7w%26pid%3DApi&f=1')] bg-repeat bg-[length:20px_20px]">
+                    <img src={file.url} alt={file.name} className="max-w-full max-h-[65vh] object-contain shadow-lg" />
+                </div>
+            );
+        }
+
+        // 2. PDF
+        if (mime.includes("pdf")) {
+            return (
+                <iframe src={file.url} className="w-full h-[70vh] rounded-md border-none" title="PDF Preview"></iframe>
+            );
+        }
+
+        // 3. VIDEO
+        if (mime.includes("video")) {
+            return (
+                <div className="w-full flex items-center justify-center bg-black/90 h-[60vh] rounded-md">
+                    <video controls src={file.url} className="max-w-full max-h-full rounded-md" />
+                </div>
+            );
+        }
+
+        // 4. AUDIO
+        if (mime.includes("audio")) {
+            return (
+                <div className="w-full h-[40vh] flex flex-col items-center justify-center bg-gray-50 rounded-lg">
+                    <FileMusic className="w-20 h-20 text-yellow-500 mb-4 animate-pulse" />
+                    <h3 className="text-lg font-medium text-gray-700 mb-4">{file.name}</h3>
+                    <audio controls src={file.url} className="w-3/4" />
+                </div>
+            );
+        }
+
+        // 5. DEFAULT / UNKNOWN
         return (
-            <div className="flex flex-col items-center justify-center h-[50vh] text-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
-                <FileSpreadsheet className="w-16 h-16 text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-700">Preview tidak tersedia</h3>
-                <p className="text-sm text-gray-500 mb-6">File ini tidak dapat ditampilkan langsung di browser.</p>
-                <Button onClick={() => window.open(file.url, '_blank')}>
-                    <Download className="w-4 h-4 mr-2" /> Download File
+            <div className="flex flex-col items-center justify-center h-[50vh] text-center bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div className="bg-white dark:bg-gray-700 p-6 rounded-full shadow-sm mb-4">
+                    {getFileIcon(file.mime_type, "w-16 h-16")}
+                </div>
+                <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">Preview Tidak Tersedia</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-sm">
+                    File tipe <b>{file.mime_type}</b> tidak dapat ditampilkan langsung di browser. Silakan unduh untuk melihatnya.
+                </p>
+                <Button onClick={() => window.open(file.url, '_blank')} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                    <Download className="w-4 h-4 mr-2" /> Download File Sekarang
                 </Button>
             </div>
         );
     };
 
     // DRAG EVENTS
-    const onDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); }, []);
+    const onDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); if (!isLoading) setIsDragging(true); }, [isLoading]);
     const onDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); }, []);
     const onDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
+        if (isLoading) return;
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) handleUpload(e.dataTransfer.files);
-    }, [handleUpload]);
+    }, [handleUpload, isLoading]);
 
     const breadcrumbs = [
         { title: "Dashboard", href: "/dashboard" },
@@ -269,43 +325,43 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="File Manager" />
 
-            {/* MAIN CONTAINER BACKGROUND GRADIENT */}
-            <div className="flex h-[calc(100vh-65px)] bg-gray-50 dark:bg-gradient-to-r dark:from-gray-900 dark:via-gray-950 dark:to-gray-900 overflow-hidden relative"
+            <div className="flex h-[calc(100vh-65px)] bg-white dark:bg-gray-950 overflow-hidden relative border-t border-gray-200 dark:border-gray-800"
                 onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
 
                 {/* OVERLAY DRAG & DROP */}
                 {isDragging && !isLoading && (
-                    <div className="absolute inset-0 z-50 bg-indigo-500/20 backdrop-blur-sm border-4 border-indigo-500 border-dashed flex items-center justify-center m-4 rounded-xl pointer-events-none">
-                        <div className="bg-white p-6 rounded-xl shadow-xl flex flex-col items-center animate-bounce">
-                            <UploadCloud className="w-16 h-16 text-indigo-600 mb-2" />
-                            <h3 className="text-xl font-bold text-indigo-700">Lepaskan file di sini</h3>
+                    <div className="absolute inset-0 z-50 bg-indigo-50/90 dark:bg-indigo-950/90 border-4 border-indigo-500 border-dashed flex items-center justify-center m-4 rounded-xl pointer-events-none">
+                        <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center animate-bounce border border-gray-100 dark:border-gray-700">
+                            <UploadCloud className="w-20 h-20 text-indigo-600 mb-4" />
+                            <h3 className="text-2xl font-bold text-indigo-700 dark:text-indigo-400">Lepaskan file di sini</h3>
                         </div>
                     </div>
                 )}
 
-                {/* Loading Overlay Global */}
+                {/* LOADING OVERLAY (NO BLUR, SOLID OPACITY) */}
                 {isLoading && (
-                    <div className="absolute inset-0 z-[60] bg-white/50 dark:bg-black/50 backdrop-blur-[2px] flex items-center justify-center cursor-wait">
-                        <div className="flex flex-col items-center gap-2">
+                    <div className="absolute inset-0 z-[60] bg-white/80 dark:bg-gray-950/80 flex items-center justify-center cursor-wait">
+                        <div className="flex flex-col items-center gap-3 p-6 bg-white dark:bg-gray-900 rounded-xl shadow-lg border border-indigo-100 dark:border-gray-800">
                             <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
-                            <span className="text-sm font-medium text-indigo-600">Memproses...</span>
+                            <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-400">Sedang memproses...</span>
                         </div>
                     </div>
                 )}
 
-                {/* SIDEBAR (GLASSMORPHISM) */}
-                <div className="w-64 border-r border-indigo-100 dark:border-gray-700 bg-white/60 dark:bg-gray-900/60 backdrop-blur-md flex flex-col hidden md:flex shrink-0">
+                {/* SIDEBAR */}
+                <div className="w-64 border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col hidden md:flex shrink-0">
                     <div className="p-4 flex-1 overflow-hidden flex flex-col">
-                        <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">Storage</div>
+                        <div className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 px-2">Storage</div>
                         <nav className="space-y-1 overflow-y-auto flex-1 pr-1 custom-scrollbar">
                             <button
                                 onClick={() => handleNavigate(null)}
-                                className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-all
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors duration-200
                                 ${!selectedFolder
-                                        ? "bg-indigo-100 text-indigo-700 font-bold dark:bg-indigo-900/40 dark:text-indigo-300"
-                                        : "text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"}`}
+                                        ? "bg-indigo-600 text-white font-medium shadow-sm"
+                                        : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"}`}
                             >
-                                <Home className="w-4 h-4 shrink-0" /> My Document
+                                <Home className={`w-4 h-4 shrink-0 ${!selectedFolder ? "text-white" : "text-gray-500"}`} />
+                                My Document
                             </button>
 
                             {(folders || []).filter(f => f.parent_id === null).map(folder => (
@@ -322,16 +378,15 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
                 </div>
 
                 {/* MAIN CONTENT */}
-                <div className="flex-1 flex flex-col min-w-0 bg-transparent">
+                <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-gray-950">
 
-                    {/* TOOLBAR (GLASSMORPHISM) */}
-                    <div className="h-16 border-b border-indigo-100 dark:border-gray-700 flex items-center justify-between px-6 bg-white/80 dark:bg-gray-800/80 backdrop-blur shrink-0 z-10">
+                    {/* TOOLBAR */}
+                    <div className="h-16 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-6 bg-white dark:bg-gray-900 shrink-0 z-10">
 
-                        {/* LEFT : BREADCRUMB */}
                         <div className="flex items-center gap-2 overflow-hidden mr-4">
                             <button
                                 onClick={() => handleNavigate(null)}
-                                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 ${!selectedFolder ? "text-indigo-600 font-bold" : "text-gray-500 dark:text-gray-400"}`}
+                                className={`p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${!selectedFolder ? "text-indigo-600 dark:text-indigo-400 font-bold" : "text-gray-500 dark:text-gray-400"}`}
                                 title="Root Folder"
                             >
                                 <Home className="w-5 h-5" />
@@ -339,10 +394,10 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
 
                             {folderPath.map((crumb, idx) => (
                                 <div key={crumb.id} className="flex items-center text-sm">
-                                    <ChevronRight className="w-4 h-4 text-gray-400 mx-1 shrink-0" />
+                                    <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600 mx-1 shrink-0" />
                                     <button
                                         onClick={() => handleNavigate(crumb)}
-                                        className={`truncate max-w-[120px] hover:underline ${idx === folderPath.length - 1 ? "font-semibold text-gray-800 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}`}
+                                        className={`truncate max-w-[120px] px-1.5 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${idx === folderPath.length - 1 ? "font-semibold text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}`}
                                     >
                                         {crumb.name}
                                     </button>
@@ -350,55 +405,69 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
                             ))}
                         </div>
 
-                        {/* RIGHT : ACTIONS */}
                         <div className="flex items-center gap-3 shrink-0">
                             <div className="relative w-40 lg:w-64 hidden sm:block">
                                 <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-gray-400" />
                                 <Input
                                     placeholder="Cari..."
-                                    className="pl-9 bg-white dark:bg-gray-900 border-indigo-100 dark:border-gray-700 focus:ring-indigo-500 transition-all rounded-full h-9"
+                                    className="pl-9 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 focus:ring-indigo-500 transition-all rounded-full h-9 text-sm"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
                             </div>
 
+                            {/* Tombol Help */}
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400"
+                                onClick={() => setShowHelp(true)}
+                                title="Bantuan"
+                            >
+                                <HelpCircle className="w-5 h-5" />
+                            </Button>
+
+                            <div className="h-6 w-px bg-gray-200 dark:bg-gray-800 mx-1"></div>
+
                             <Button
                                 size="sm"
                                 variant="outline"
-                                className="bg-white dark:bg-gray-800 border-indigo-200 dark:border-gray-700 hover:bg-indigo-50 dark:hover:bg-gray-700 text-indigo-700 dark:text-gray-200"
+                                className="border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"
                                 onClick={() => {
                                     setInputName("");
                                     setModal({ type: "create" });
                                 }}
                                 disabled={isLoading}
                             >
-                                <FolderPlus className="w-4 h-4 mr-1" />
+                                <FolderPlus className="w-4 h-4 mr-1.5" />
                                 <span className="hidden sm:inline">Folder</span>
                             </Button>
 
                             <Button
                                 size="sm"
-                                className="bg-indigo-600 hover:bg-indigo-700 shadow-md text-white"
+                                className="bg-indigo-600 hover:bg-indigo-700 shadow-sm text-white"
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={isLoading}
                             >
-                                <UploadCloud className="w-4 h-4 mr-2" />
+                                <UploadCloud className="w-4 h-4 mr-1.5" />
                                 <span className="hidden sm:inline">Upload</span>
                             </Button>
                         </div>
                     </div>
 
                     {/* CONTENT AREA */}
-                    <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-transparent">
+                    <div className="flex-1 overflow-y-auto p-6 scroll-smooth bg-gray-50/50 dark:bg-gray-950">
 
                         {filteredContent.folders.length === 0 && filteredContent.files.length === 0 && !searchQuery ? (
                             <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 animate-in fade-in duration-500">
-                                <div className="bg-white dark:bg-gray-800 p-6 rounded-full mb-4 shadow-sm border border-dashed border-gray-200 dark:border-gray-700">
-                                    <UploadCloud className="w-16 h-16 text-indigo-200 dark:text-gray-600" />
+                                <div className="bg-white dark:bg-gray-900 p-8 rounded-full mb-4 shadow-sm border border-dashed border-gray-200 dark:border-gray-800">
+                                    <FolderPlus className="w-16 h-16 text-gray-300 dark:text-gray-600" />
                                 </div>
-                                <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300">Folder ini kosong</h3>
-                                <p className="text-sm max-w-xs mx-auto mb-6 text-gray-500 dark:text-gray-500">Drag & drop file di sini atau gunakan tombol upload.</p>
-                                <Button variant="outline" className="dark:border-gray-700 dark:text-gray-300" onClick={() => fileInputRef.current?.click()} disabled={isLoading}>Pilih File dari Komputer</Button>
+                                <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-200">Folder ini kosong</h3>
+                                <p className="text-sm max-w-xs mx-auto mb-6 text-gray-500 dark:text-gray-500 mt-2">Mulai dengan membuat folder baru atau mengupload file.</p>
+                                <Button variant="default" onClick={() => fileInputRef.current?.click()} disabled={isLoading}>
+                                    Upload File Sekarang
+                                </Button>
                             </div>
                         ) : (
                             <>
@@ -413,34 +482,40 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
                                                 <div
                                                     key={folder.id}
                                                     onClick={() => handleNavigate(folder)}
-                                                    className="group flex flex-col justify-between p-4 border border-indigo-100 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 hover:border-indigo-400 dark:hover:border-indigo-400 hover:shadow-md cursor-pointer transition-all h-32 relative shadow-sm"
+                                                    className="group flex flex-col justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 hover:border-indigo-500 dark:hover:border-indigo-500 hover:shadow-md cursor-pointer transition-all duration-200 h-28 relative shadow-sm"
                                                 >
                                                     <div className="flex justify-between items-start">
-                                                        <Folder className="w-10 h-10 text-yellow-400 fill-yellow-400 dark:text-yellow-500 dark:fill-yellow-500" />
+                                                        <Folder className="w-10 h-10 text-indigo-100 fill-indigo-500 dark:text-indigo-900 dark:fill-indigo-600" />
 
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="icon"
-                                                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity -mr-2 -mt-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                                                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity -mr-2 -mt-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
                                                                     onClick={(e) => e.stopPropagation()}
                                                                 >
                                                                     <MoreHorizontal className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                                                                 </Button>
                                                             </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end" className="dark:bg-gray-800 dark:border-gray-700">
-                                                                <DropdownMenuItem className="dark:text-gray-200 dark:focus:bg-gray-700" onClick={(e) => { e.stopPropagation(); setInputName(folder.name); setModal({ type: "rename", target: folder }); }}>
+                                                            <DropdownMenuContent align="end" className="w-40 dark:bg-gray-800 dark:border-gray-700">
+                                                                <DropdownMenuItem className="dark:text-gray-200 cursor-pointer" onClick={(e) => { e.stopPropagation(); setInputName(folder.name); setModal({ type: "rename", target: folder }); }}>
                                                                     <Pencil className="w-4 h-4 mr-2" /> Rename
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuSeparator className="dark:bg-gray-700" />
-                                                                <DropdownMenuItem className="text-red-600 dark:text-red-400 dark:focus:bg-gray-700" onClick={(e) => { e.stopPropagation(); handleDelete('folder', folder.id); }}>
+                                                                <DropdownMenuItem
+                                                                    className="text-red-600 dark:text-red-400 cursor-pointer focus:bg-red-50 dark:focus:bg-red-900/20"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        requestDelete('folder', folder.id, folder.name);
+                                                                    }}
+                                                                >
                                                                     <Trash2 className="w-4 h-4 mr-2" /> Delete
                                                                 </DropdownMenuItem>
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
-                                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate w-full" title={folder.name}>{folder.name}</span>
+                                                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate w-full mt-2" title={folder.name}>{folder.name}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -453,36 +528,42 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
                                         <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider flex items-center gap-2">
                                             <FileText className="w-4 h-4" /> Files ({filteredContent.files.length})
                                         </h3>
-                                        <Card className="rounded-xl overflow-hidden shadow-xl border-0 ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900">
+                                        <Card className="rounded-xl overflow-hidden shadow-sm border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                                             <table className="w-full text-sm text-left">
-                                                <thead className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-medium">
+                                                <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
                                                     <tr>
-                                                        <th className="px-5 py-4">Name</th>
-                                                        <th className="px-5 py-4 w-32 hidden sm:table-cell">Size</th>
-                                                        <th className="px-5 py-4 w-28 text-center">Action</th>
+                                                        <th className="px-6 py-3 font-semibold text-gray-600 dark:text-gray-300">Name</th>
+                                                        <th className="px-6 py-3 font-semibold text-gray-600 dark:text-gray-300 w-32 hidden sm:table-cell">Size</th>
+                                                        <th className="px-6 py-3 font-semibold text-gray-600 dark:text-gray-300 w-32 text-center">Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                                                     {filteredContent.files.map(file => (
                                                         <tr key={file.id}
-                                                            className="hover:bg-slate-50 dark:hover:bg-slate-900/50 group cursor-pointer transition-colors"
+                                                            className="hover:bg-gray-50 dark:hover:bg-gray-800 group cursor-pointer transition-colors duration-150"
                                                             onClick={() => setPreviewFile(file)}
                                                         >
-                                                            <td className="px-5 py-3 flex items-center gap-3">
+                                                            <td className="px-6 py-3 flex items-center gap-4">
                                                                 {getFileIcon(file.mime_type, "w-8 h-8")}
                                                                 <div className="flex flex-col overflow-hidden">
-                                                                    <span className="text-gray-700 dark:text-gray-200 font-medium truncate max-w-[150px] sm:max-w-xs md:max-w-md">
+                                                                    <span className="text-gray-800 dark:text-gray-200 font-medium truncate max-w-[200px] sm:max-w-xs md:max-w-md">
                                                                         {file.name}
                                                                     </span>
-                                                                    <span className="text-xs text-gray-400 sm:hidden">{formatSize(file.size)}</span>
+                                                                    <span className="text-xs text-gray-400 sm:hidden mt-0.5">{formatSize(file.size)}</span>
                                                                 </div>
                                                             </td>
-                                                            <td className="px-5 py-3 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{formatSize(file.size)}</td>
-                                                            <td className="px-5 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                                            <td className="px-6 py-3 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{formatSize(file.size)}</td>
+                                                            <td className="px-6 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                                                                 <div className="flex justify-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                                    <button onClick={() => setPreviewFile(file)} className="p-1.5 text-gray-500 hover:text-indigo-600 rounded hover:bg-indigo-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition-colors" title="Preview"><Eye className="w-4 h-4" /></button>
-                                                                    <button onClick={() => window.open(file.url, '_blank')} className="p-1.5 text-gray-500 hover:text-green-600 rounded hover:bg-green-100 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-green-400 transition-colors" title="Download"><Download className="w-4 h-4" /></button>
-                                                                    <button onClick={() => handleDelete('file', file.id)} className="p-1.5 text-gray-500 hover:text-red-600 rounded hover:bg-red-100 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-red-400 transition-colors" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                                                                    <button onClick={() => setPreviewFile(file)} className="p-2 text-gray-500 hover:text-indigo-600 rounded-md hover:bg-indigo-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-indigo-400 transition-colors" title="Preview"><Eye className="w-4 h-4" /></button>
+                                                                    <button onClick={() => window.open(file.url, '_blank')} className="p-2 text-gray-500 hover:text-green-600 rounded-md hover:bg-green-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-green-400 transition-colors" title="Download"><Download className="w-4 h-4" /></button>
+                                                                    <button
+                                                                        onClick={() => requestDelete('file', file.id, file.name)}
+                                                                        className="p-2 text-gray-500 hover:text-red-600 rounded-md hover:bg-red-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-red-400 transition-colors"
+                                                                        title="Delete"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -509,7 +590,7 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
             />
 
             {/* --- MODAL: CREATE / RENAME --- */}
-            <Dialog open={modal.type !== null} onOpenChange={() => { if (!isLoading) setModal({ type: null, target: null }); }}>
+            <Dialog open={modal.type !== null} onOpenChange={(isOpen) => { if (!isOpen && !isLoading) setModal({ type: null, target: null }); }}>
                 <DialogContent className="dark:bg-gray-900 dark:border-gray-700">
                     <DialogHeader>
                         <DialogTitle className="dark:text-white">{modal.type === "create" ? "Buat Folder Baru" : "Ganti Nama Folder"}</DialogTitle>
@@ -542,35 +623,123 @@ export default function FileManager({ folders = [], files = [] }: FileManagerPro
                     <DialogFooter>
                         <Button variant="secondary" onClick={() => setModal({ type: null, target: null })} disabled={isLoading} className="dark:bg-gray-800 dark:text-gray-200">Batal</Button>
                         <Button onClick={submitModal} disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                            {isLoading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                            {isLoading ? "Menyimpan..." : "Simpan"}
+                            {isLoading && <Loader2 className="w-4 h-4 animate-spin mr-2" />} Simpan
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* --- MODAL: FILE PREVIEW --- */}
-            <Dialog open={!!previewFile} onOpenChange={(open) => !open && setPreviewFile(null)}>
-                <DialogContent className="max-w-4xl w-full h-auto max-h-[90vh] flex flex-col p-0 overflow-hidden dark:bg-gray-900 dark:border-gray-700">
-                    <DialogHeader className="p-4 border-b dark:border-gray-700 flex flex-row items-center justify-between space-y-0 bg-white dark:bg-gray-900">
-                        <DialogTitle className="truncate pr-8 text-base dark:text-white">{previewFile?.name}</DialogTitle>
+            {/* --- MODAL: CONFIRM DELETE --- */}
+            <Dialog open={!!deleteConfig} onOpenChange={(isOpen) => { if (!isOpen && !isLoading) setDeleteConfig(null); }}>
+                <DialogContent className="dark:bg-gray-900 dark:border-gray-700 sm:max-w-[425px]">
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-full">
+                                <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                            </div>
+                            <div>
+                                <DialogTitle className="dark:text-white">Konfirmasi Hapus</DialogTitle>
+                                <DialogDescription className="dark:text-gray-400 mt-1">
+                                    Apakah Anda yakin ingin menghapus {deleteConfig?.type === 'folder' ? 'folder' : 'file'}: <br />
+                                    <span className="font-bold text-gray-800 dark:text-gray-200">"{deleteConfig?.name}"</span>?
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+                    {deleteConfig?.type === 'folder' && (
+                        <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900 rounded-md text-xs text-red-600 dark:text-red-400 flex gap-2">
+                            <Info className="w-4 h-4 shrink-0" />
+                            <span>Menghapus folder akan menghapus semua file di dalamnya secara permanen.</span>
+                        </div>
+                    )}
+                    <DialogFooter className="mt-4">
+                        <Button variant="outline" onClick={() => setDeleteConfig(null)} disabled={isLoading} className="dark:bg-gray-800 dark:text-gray-200">Batal</Button>
+                        <Button onClick={confirmDelete} disabled={isLoading} variant="destructive">
+                            {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                            Ya, Hapus
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* --- MODAL: HELP / PANDUAN --- */}
+            <Dialog open={showHelp} onOpenChange={setShowHelp}>
+                <DialogContent className="dark:bg-gray-900 dark:border-gray-700 sm:max-w-[600px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 dark:text-white text-xl">
+                            <HelpCircle className="w-6 h-6 text-indigo-600" /> Panduan Penggunaan
+                        </DialogTitle>
+                        <DialogDescription>
+                            Berikut adalah cara menggunakan File Manager ini.
+                        </DialogDescription>
                     </DialogHeader>
 
-                    <div className="flex-1 overflow-auto bg-gray-100 dark:bg-black/20 p-4 flex items-center justify-center min-h-[300px]">
-                        {previewFile && renderPreviewContent(previewFile)}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+                        <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
+                            <div className="flex items-center gap-2 mb-2 font-semibold text-gray-800 dark:text-gray-200">
+                                <UploadCloud className="w-4 h-4 text-indigo-500" /> Upload File
+                            </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                                Klik tombol <b>Upload</b> di pojok kanan atas, atau <b>Drag & Drop</b> file langsung dari komputer Anda ke area layar.
+                            </p>
+                        </div>
+
+                        <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
+                            <div className="flex items-center gap-2 mb-2 font-semibold text-gray-800 dark:text-gray-200">
+                                <FolderPlus className="w-4 h-4 text-indigo-500" /> Buat Folder
+                            </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                                Gunakan tombol <b>Folder</b> untuk membuat folder baru guna mengorganisir dokumen Anda.
+                            </p>
+                        </div>
+
+                        <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
+                            <div className="flex items-center gap-2 mb-2 font-semibold text-gray-800 dark:text-gray-200">
+                                <MoreHorizontal className="w-4 h-4 text-indigo-500" /> Aksi Folder
+                            </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                                Klik icon titik tiga pada folder untuk <b>Mengganti Nama (Rename)</b> atau <b>Menghapus</b> folder tersebut.
+                            </p>
+                        </div>
+
+                        <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-100 dark:border-gray-700">
+                            <div className="flex items-center gap-2 mb-2 font-semibold text-gray-800 dark:text-gray-200">
+                                <Eye className="w-4 h-4 text-indigo-500" /> Preview File
+                            </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                                Klik langsung pada baris file untuk melihat <b>Preview</b> dokumen (Gambar, PDF, Audio/Video).
+                            </p>
+                        </div>
                     </div>
 
-                    <DialogFooter className="p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-between items-center sm:justify-between">
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {previewFile && `${formatSize(previewFile.size)} • ${previewFile.mime_type}`}
-                        </div>
-                        <Button size="sm" onClick={() => previewFile && window.open(previewFile.url, '_blank')} className="dark:bg-gray-700 dark:text-white">
-                            <Download className="w-4 h-4 mr-2" /> Download Asli
-                        </Button>
+                    <DialogFooter>
+                        <Button onClick={() => setShowHelp(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white w-full">Mengerti</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
+            {/* --- PREVIEW MODAL --- */}
+            <Dialog open={previewFile !== null} onOpenChange={() => setPreviewFile(null)}>
+                <DialogContent className="max-w-4xl w-full p-0 overflow-hidden bg-black/95 border-none">
+                    <DialogHeader className="p-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex flex-row items-center justify-between space-y-0">
+                        <DialogTitle className="text-base truncate flex items-center gap-2 dark:text-white">
+                            {previewFile && getFileIcon(previewFile.mime_type, "w-5 h-5")}
+                            {previewFile?.name}
+                        </DialogTitle>
+                        <Button variant="ghost" size="icon" onClick={() => setPreviewFile(null)} className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
+                            <X className="w-5 h-5" />
+                        </Button>
+                    </DialogHeader>
+                    <div className="p-4 flex items-center justify-center bg-gray-100 dark:bg-black min-h-[400px]">
+                        {previewFile && renderPreviewContent(previewFile)}
+                    </div>
+                    <DialogFooter className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-4">
+                        <Button onClick={() => previewFile && window.open(previewFile.url, '_blank')} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white">
+                            <Download className="w-4 h-4 mr-2" /> Download File
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

@@ -22,18 +22,26 @@ use App\Http\Controllers\{
     FileManagerController,
     JadwalAuditController,
     CarController,
-    PencatatanAmiController
+    PencatatanAmiController,
+    PublicDocController,
+    PublicController,
+    DashboardController
 };
 
 /*
 |--------------------------------------------------------------------------
-| Public Routes
+| Public Routes (Tanpa Login)
 |--------------------------------------------------------------------------
+| Dihandle oleh PublicController untuk tampilan pengunjung
 */
 
-Route::get('/', [NewsController::class, 'landing'])->name('home');
-Route::get('/berita', [NewsController::class, 'publicIndex'])->name('public.news.index');
-Route::get('/berita/{slug}', [NewsController::class, 'show'])->name('public.news.show');
+Route::controller(PublicController::class)->group(function () {
+    Route::get('/', 'home')->name('home');
+    Route::get('/berita', 'berita')->name('public.news.index');
+    Route::get('/berita/{slug}', 'beritaShow')->name('public.news.show');
+    Route::get('/dokumen', 'dokumen')->name('public.dokumen');
+    Route::get('/kontak', 'kontak')->name('public.contact');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -57,13 +65,12 @@ Route::middleware(['auth'])->group(function () {
 | Authenticated & Permission Checked Routes
 |--------------------------------------------------------------------------
 | Route di sini memerlukan Role Aktif dan Izin Akses Menu (Database Permissions)
+| Prefix: /admin (opsional, tapi biasanya admin ada di root dashboard)
 */
 Route::middleware(['auth', 'menu.permission'])->group(function () {
 
-    Route::get('/dashboard', function () {
-        return Inertia::render('dashboard');
-    })->name('dashboard');
-
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->name('dashboard');
     /*
     |--------------------------------------------------------------------------
     | System Management (User, Role, Menu, Permission)
@@ -96,7 +103,6 @@ Route::middleware(['auth', 'menu.permission'])->group(function () {
     Route::get('/backup', [BackupController::class, 'index'])->name('backup.index');
     Route::post('/backup/run', [BackupController::class, 'run'])->name('backup.run');
     Route::delete('/backup/delete/{file}', [BackupController::class, 'delete'])->name('backup.delete');
-    // Note: backup.download sudah dipindahkan ke grup atas
 
     /*
     |--------------------------------------------------------------------------
@@ -122,13 +128,13 @@ Route::middleware(['auth', 'menu.permission'])->group(function () {
 
     // File Action
     Route::delete('/pami/file/{id}', [PamiController::class, 'deleteFile'])->name('pami.file.delete');
-    // Note: pami.download sudah dipindahkan ke grup atas
 
     // CAR Actions
     Route::post('/pami/car/store', [CarController::class, 'store'])->name('pami.car.store'); // Create
     Route::post('/pami/car/respond', [PamiController::class, 'respondCar'])->name('pami.car.respond'); // Auditee Respond
     Route::post('/pami/car/verify', [PamiController::class, 'verifyCar'])->name('pami.car.verify'); // Auditor Verify
     Route::get('/pami/print', [PamiController::class, 'print'])->name('pami.print');
+
     // Pencatatan AMI Print/View
     Route::get('/pencatatanami', [PencatatanAmiController::class, 'index'])->name('pencatatan.index');
     Route::get('/pencatatanami/print/{id_indikator}', [PencatatanAmiController::class, 'print'])->name('pencatatan.print');
@@ -173,10 +179,12 @@ Route::middleware(['auth', 'menu.permission'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | News (Admin Management)
+    | CMS Management (Berita & Dokumen Publik)
     |--------------------------------------------------------------------------
     */
-    Route::resource('News', NewsController::class)->except(['show']);
+    Route::post('/docs/import', [PublicDocController::class, 'import'])->name('docs.import');
+    Route::resource('docs', PublicDocController::class);
+    Route::resource('news', NewsController::class);
 });
 
 require __DIR__ . '/settings.php';

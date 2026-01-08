@@ -10,14 +10,14 @@ export default function IndexNews({ news }: any) {
     const handleDelete = (id: number) => {
         if (confirm('Hapus berita ini?')) {
             // PERUBAHAN DISINI: News.destroy
-            router.delete(route('News.destroy', id), {
+            router.delete(route('news.destroy', id), {
                 onSuccess: () => toast.success('Berita dihapus')
             });
         }
     }
 
     return (
-        <AppLayout breadcrumbs={[{ title: "News", href: "/News" }]}>
+        <AppLayout breadcrumbs={[{ title: "News", href: "/news" }]}>
             <Head title="List News" />
             <div className="p-8 bg-gray-100 min-h-screen
     dark:bg-gradient-to-r dark:from-gray-900 dark:via-gray-950 dark:to-gray-900">
@@ -25,7 +25,7 @@ export default function IndexNews({ news }: any) {
                 <div className="flex justify-between mb-4">
                     <h1 className="text-2xl font-bold">Manajemen News</h1>
                     {/* PERUBAHAN DISINI: News.create */}
-                    <Link href={route('News.create')}>
+                    <Link href={route('news.create')}>
                         <Button className="shadow-sm bg-gradient-to-r from-indigo-500 to-purple-500 text-white">+ Tambah News</Button>
                     </Link>
                 </div>

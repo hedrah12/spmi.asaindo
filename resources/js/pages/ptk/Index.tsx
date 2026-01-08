@@ -168,7 +168,7 @@ export default function PtkIndex({ auth, data, meta }: Props) {
                                 </span>
                             )}
                             {file.keterangan && (
-                                <span className="text-[10px] text-gray-500 dark:text-gray-400 italic truncate flex items-center gap-1 mt-0.5">
+                                <span className="text-[12px] text-dark dark:text-gray-400 truncate flex items-center gap-1 mt-0.5">
                                     <LinkIcon size={8} /> {file.keterangan}
                                 </span>
                             )}
